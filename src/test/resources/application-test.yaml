@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 30      # concurrency tests run up to ~24 simultaneous use cases
+      minimum-idle: 1            # many Spring contexts are cached per test run; do not hold idle connections
+ana:
+  outbox:
+    dispatcher-enabled: false     # tests drive OutboxDispatcher.dispatchOnce() explicitly
+  rate-limit:
+    default-limit: { max-requests: 1000, window: PT1M }
+    limits:
+      "[catalog.read]": { max-requests: 100000, window: PT1M }
+      "[catalog.search]": { max-requests: 100000, window: PT1M }
+      "[admin.write]": { max-requests: 100000, window: PT1M }
+      "[admin.reindex]": { max-requests: 100000, window: PT1M }
+logging:
+  structured:
+    format:
+      console: ""                 # readable console output while testing

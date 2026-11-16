@@ -18,6 +18,35 @@ public record Contact(String firstName, String lastName, String dialCode, String
 		email = isBlank(email) ? null : email.strip();
 	}
 
+	/**
+	 * Is {@code typed} this contact's phone number? Compared on digits only: the national number alone ("3700 0000"), or the
+	 * dial code plus the national number ("+509 3700 0000", "00509 3700 0000"). Deliberately stricter than the storefront's demo
+	 * check: no arbitrary-suffix matching (typing the last six digits is not enough). Fewer than 6 digits never matches.
+	 */
+	public boolean phoneMatches(String typed) {
+		var input = digitsOf(typed);
+		if (input.startsWith("00")) {
+			input = input.substring(2);
+		}
+		if (input.length() < 6) {
+			return false;
+		}
+		var national = digitsOf(phone);
+		var withDialCode = digitsOf(dialCode) + national;
+		// both comparisons always run and are constant-time per candidate
+		boolean a = sameDigits(input, national);
+		boolean b = sameDigits(input, withDialCode);
+		return a | b;
+	}
+
+	private static String digitsOf(String s) {
+		return s == null ? "" : s.replaceAll("\\D", "");
+	}
+
+	private static boolean sameDigits(String a, String b) {
+		return java.security.MessageDigest.isEqual(a.getBytes(java.nio.charset.StandardCharsets.UTF_8), b.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+	}
+
 	private static boolean isBlank(String s) {
 		return s == null || s.isBlank();
 	}

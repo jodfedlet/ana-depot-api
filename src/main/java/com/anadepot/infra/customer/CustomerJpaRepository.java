@@ -6,7 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CustomerJpaRepository extends JpaRepository<CustomerEntity, UUID> {
 
-	Optional<CustomerEntity> findByDialCodeAndPhone(String dialCode, String phone);
+	/** Guest rows only (no account): registered customers never match by phone. */
+	Optional<CustomerEntity> findByDialCodeAndPhoneAndAuthUserIdIsNull(String dialCode, String phone);
 
 	Optional<CustomerEntity> findByAuthUserId(UUID authUserId);
 }

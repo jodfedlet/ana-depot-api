@@ -60,6 +60,11 @@ class CoreConfig {
 	}
 
 	@Bean
+	com.anadepot.core.customer.service.AccountService accountService(CustomerRepository customers, ReservationRepository reservations, TransactionBoundary tx, Clock clock) {
+		return new com.anadepot.core.customer.serviceImpl.AccountServiceImpl(customers, reservations, tx, clock);
+	}
+
+	@Bean
 	PaymentService paymentService(PaymentRepository payments, ReservationRepository reservations, AuditRecorder audit, DomainEventRecorder events,
 			OperationMetrics metrics, CorrelationContext correlation, IdempotencyService idempotency, TransactionBoundary tx, Clock clock) {
 		return new PaymentServiceImpl(payments, reservations, audit, events, metrics, correlation, idempotency, tx, clock);

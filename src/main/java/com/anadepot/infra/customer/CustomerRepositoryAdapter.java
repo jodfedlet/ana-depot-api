@@ -32,8 +32,13 @@ class CustomerRepositoryAdapter implements CustomerRepository {
 	}
 
 	@Override
-	public Optional<Customer> findByPhone(String dialCode, String normalizedPhone) {
-		return jpa.findByDialCodeAndPhone(dialCode, normalizedPhone).map(CustomerRepositoryAdapter::toDomain);
+	public Optional<Customer> findGuestByPhone(String dialCode, String normalizedPhone) {
+		return jpa.findByDialCodeAndPhoneAndAuthUserIdIsNull(dialCode, normalizedPhone).map(CustomerRepositoryAdapter::toDomain);
+	}
+
+	@Override
+	public Optional<Customer> findByAuthUserId(java.util.UUID authUserId) {
+		return jpa.findByAuthUserId(authUserId).map(CustomerRepositoryAdapter::toDomain);
 	}
 
 	private static Customer toDomain(CustomerEntity e) {

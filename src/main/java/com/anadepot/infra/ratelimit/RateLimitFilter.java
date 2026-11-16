@@ -32,6 +32,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
 	private static final List<Rule> RULES = List.of(
 			new Rule(HttpMethod.POST, "/api/v1/reservations", "reservation.submit"),
 			new Rule(HttpMethod.POST, "/api/v1/reservations/lookup", "reservation.lookup"),   // POST: the phone number must not travel in a URL
+			new Rule(HttpMethod.PUT, "/api/v1/me/profile", "account.write"),
+			new Rule(HttpMethod.GET, "/api/v1/me/**", "account.read"),
 			new Rule(HttpMethod.POST, "/api/v1/admin/products/*/images/uploads", "upload.request"),
 			new Rule(HttpMethod.POST, "/api/v1/admin/catalog/search/reindex", "admin.reindex"),
 			new Rule(HttpMethod.POST, "/api/v1/admin/**", "admin.write"),

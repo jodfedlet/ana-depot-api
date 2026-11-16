@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -116,12 +117,25 @@ public class ReservationServiceImpl implements ReservationService {
 			inventory.save(item.reserve(entry.getValue()));
 		}
 		var contact = cmd.contact();
-		var customer = customers.findByPhone(contact.dialCode(), Customer.normalizePhone(contact.phone()))
-				.orElseGet(() -> customers.save(new Customer(UUID.randomUUID(), contact.firstName(), contact.lastName(), contact.dialCode(),
-						Customer.normalizePhone(contact.phone()), contact.email(), cmd.actor() == null ? null : cmd.actor().userId(), now)));
+		var customer = customerOf(cmd.actor(), contact, now);
 		var reservation = reservations.save(Reservation.submit(UUID.randomUUID(), newReference(), cmd.locale(), contact, customer.id(), lines, pickupSnapshot, now));
 		record(reservation, "reservation.submitted", "RESERVATION_SUBMITTED", cmd.actor() == null ? Actor.guest() : cmd.actor(), null, null);
 		return reservation;
+	}
+
+	/**
+	 * Whose reservation is it? A signed-in customer's own REGISTERED record (created from the contact on the first reservation if
+	 * they have none yet); a guest's GUEST record for that phone number. A guest is never matched to, or merged into, a registered
+	 * customer, even with the same phone number: the person is not proven to be the same.
+	 */
+	private Customer customerOf(Actor actor, com.anadepot.core.reservation.model.Contact contact, Instant now) {
+		var phone = Customer.normalizePhone(contact.phone());
+		if (actor != null && actor.kind() == ActorKind.CUSTOMER && actor.userId() != null) {
+			return customers.findByAuthUserId(actor.userId())
+					.orElseGet(() -> customers.save(new Customer(UUID.randomUUID(), contact.firstName(), contact.lastName(), contact.dialCode(), phone, contact.email(), actor.userId(), now)));
+		}
+		return customers.findGuestByPhone(contact.dialCode(), phone)
+				.orElseGet(() -> customers.save(new Customer(UUID.randomUUID(), contact.firstName(), contact.lastName(), contact.dialCode(), phone, contact.email(), null, now)));
 	}
 
 	// ---- transitions ----------------------------------------------------------------------------------------
@@ -159,6 +173,15 @@ public class ReservationServiceImpl implements ReservationService {
 	@Override
 	public Reservation get(UUID id) {
 		return reservations.findById(id).orElseThrow(() -> new NotFoundException("Reservation", id));
+	}
+
+	@Override
+	public Optional<Reservation> lookup(String reference, String phone) {
+		if (reference == null || phone == null) {
+			return Optional.empty();
+		}
+		var normalized = reference.strip().toUpperCase(java.util.Locale.ROOT).replaceAll("\\s+", "");
+		return reservations.findByReference(normalized).filter(r -> r.phoneMatches(phone));
 	}
 
 	private Reservation transition(UUID id, Actor actor, String key, String op, String params, Consumer<Reservation> action,

@@ -8,6 +8,8 @@ import com.anadepot.core.reservation.model.ReservationNote;
 import com.anadepot.core.reservation.model.StatusChange;
 import com.anadepot.core.reservation.repository.ReservationRepository;
 import com.anadepot.core.shared.Actor;
+import com.anadepot.core.shared.PageRequest;
+import com.anadepot.core.shared.PageResult;
 import com.anadepot.core.shared.money.CurrencyTotals;
 import com.anadepot.core.shared.money.Money;
 import java.time.Clock;
@@ -141,6 +143,12 @@ class ReservationRepositoryAdapter implements ReservationRepository {
 	@Override
 	public boolean referenceExists(String reference) {
 		return jpa.existsByReference(reference);
+	}
+
+	@Override
+	public PageResult<Reservation> findByCustomerId(UUID customerId, PageRequest page) {
+		var found = jpa.findByCustomerIdOrderByCreatedAtDescIdAsc(customerId, org.springframework.data.domain.PageRequest.of(page.page(), page.size()));
+		return new PageResult<>(found.getContent().stream().map(ReservationRepositoryAdapter::toDomain).toList(), page.page(), page.size(), found.getTotalElements());
 	}
 
 	@Override

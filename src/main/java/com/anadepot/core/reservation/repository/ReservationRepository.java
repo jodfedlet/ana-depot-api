@@ -2,6 +2,8 @@ package com.anadepot.core.reservation.repository;
 
 import com.anadepot.core.reservation.model.ItemKey;
 import com.anadepot.core.reservation.model.Reservation;
+import com.anadepot.core.shared.PageRequest;
+import com.anadepot.core.shared.PageResult;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,6 +19,9 @@ public interface ReservationRepository {
 	Optional<Reservation> findByReference(String reference);
 
 	boolean referenceExists(String reference);
+
+	/** A customer's reservations, newest first. */
+	PageResult<Reservation> findByCustomerId(UUID customerId, PageRequest page);
 
 	/** Sum of quantities held by OPEN reservations for one stock position (used to reconcile {@code inventory_items.reserved}). */
 	int openHeldQuantity(ItemKey key);

@@ -18,6 +18,8 @@ interface ReservationJpaRepository extends JpaRepository<ReservationEntity, UUID
 
 	boolean existsByReference(String reference);
 
+	org.springframework.data.domain.Page<ReservationEntity> findByCustomerIdOrderByCreatedAtDescIdAsc(UUID customerId, org.springframework.data.domain.Pageable pageable);
+
 	@Query("select coalesce(sum(l.quantity), 0) from ReservationLineEntity l where l.reservation.status in ('PENDING_REVIEW', 'CONFIRMED', 'READY_FOR_PICKUP') and l.productId = :productId and l.variantId is null")
 	long openHeldForProduct(UUID productId);
 

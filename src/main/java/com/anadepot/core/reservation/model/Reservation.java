@@ -200,6 +200,11 @@ public final class Reservation {
 		this.status = to;
 	}
 
+	/** Does this phone number identify the person who made the reservation? (see {@link Contact#phoneMatches}) */
+	public boolean phoneMatches(String typed) {
+		return contact.phoneMatches(typed);
+	}
+
 	public UUID id() { return id; }
 	public String reference() { return reference; }
 	public String locale() { return locale; }

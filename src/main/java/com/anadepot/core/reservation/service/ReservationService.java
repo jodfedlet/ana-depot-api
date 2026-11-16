@@ -4,6 +4,7 @@ import com.anadepot.core.reservation.model.RejectReason;
 import com.anadepot.core.reservation.model.Reservation;
 import com.anadepot.core.shared.Actor;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -34,4 +35,10 @@ public interface ReservationService {
 	Reservation expire(UUID id, Actor actor, String idempotencyKey);
 
 	Reservation get(UUID id);
+
+	/**
+	 * Guest lookup: the reservation whose reference AND phone number both match. Empty for an unknown reference and for a wrong
+	 * phone alike, so callers cannot tell which one failed. The reference alone is never enough.
+	 */
+	Optional<Reservation> lookup(String reference, String phone);
 }

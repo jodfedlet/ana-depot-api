@@ -13,6 +13,11 @@ ana:
       "[catalog.search]": { max-requests: 100000, window: PT1M }
       "[admin.write]": { max-requests: 100000, window: PT1M }
       "[admin.reindex]": { max-requests: 100000, window: PT1M }
+      "[reservation.submit]": { max-requests: 100000, window: PT1M }          # HTTP tests share one client address; dedicated tests set their own limits
+      "[reservation.lookup]": { max-requests: 100000, window: PT1M }
+      "[reservation.lookup.reference]": { max-requests: 100000, window: PT1M }
+      "[account.read]": { max-requests: 100000, window: PT1M }
+      "[account.write]": { max-requests: 100000, window: PT1M }
 logging:
   structured:
     format:

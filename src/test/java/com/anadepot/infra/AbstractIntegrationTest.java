@@ -80,6 +80,11 @@ public abstract class AbstractIntegrationTest {
 		return reservations.submit(new SubmitReservationCommand(List.of(lines), contact("0000 " + (1000 + (int) (Math.random() * 8999))), "fr", PICKUP, Actor.guest(), key));
 	}
 
+	/** Submits through the use case for a given phone number. */
+	protected Reservation submit(String key, SubmitReservationCommand.Line line, String phone) {
+		return reservations.submit(new SubmitReservationCommand(List.of(line), contact(phone), "fr", PICKUP, Actor.guest(), key));
+	}
+
 	protected Reservation ready(Reservation r) {
 		reservations.accept(r.id(), staff, null);
 		return reservations.markReady(r.id(), staff, null, null);

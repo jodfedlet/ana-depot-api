@@ -37,6 +37,14 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 		return problem(HttpStatus.NOT_FOUND, e.code(), e.getMessage());
 	}
 
+	@ExceptionHandler(com.anadepot.infra.ratelimit.RateLimitExceededException.class)
+	ResponseEntity<ProblemDetail> rateLimited(com.anadepot.infra.ratelimit.RateLimitExceededException e) {
+		var problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, "Too many requests. Try again later.");
+		problem.setProperty("code", "rate_limited");
+		problem.setProperty("correlationId", MDC.get("correlationId"));
+		return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1, e.retryAfter().toSeconds()))).body(problem);
+	}
+
 	@ExceptionHandler(FieldValidationException.class)
 	ResponseEntity<ProblemDetail> fields(FieldValidationException e) {
 		var problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, "The request has invalid fields.");

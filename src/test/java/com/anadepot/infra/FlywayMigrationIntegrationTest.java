@@ -19,11 +19,11 @@ class FlywayMigrationIntegrationTest extends AbstractIntegrationTest {
 	@Test
 	void allMigrationsAreAppliedInOrderWithoutAnythingPending() {
 		var all = flyway.info().all();
-		assertThat(all).extracting(m -> m.getVersion().getVersion()).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
-		assertThat(all).extracting(m -> m.getDescription()).containsExactly("catalog", "customers and inventory", "reservations", "payments and ledger", "platform", "store settings", "catalog search", "catalog fulltext search");
+		assertThat(all).extracting(m -> m.getVersion().getVersion()).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+		assertThat(all).extracting(m -> m.getDescription()).containsExactly("catalog", "customers and inventory", "reservations", "payments and ledger", "platform", "store settings", "catalog search", "catalog fulltext search", "customer accounts");
 		assertThat(Arrays.stream(all).map(m -> m.getState())).containsOnly(MigrationState.SUCCESS);
 		assertThat(flyway.info().pending()).isEmpty();
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("8");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("9");
 	}
 
 	@Test

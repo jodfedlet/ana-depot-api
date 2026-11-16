@@ -21,8 +21,12 @@ class ReservationRateLimitIntegrationTest extends ReservationHttpSupport {
 		ensurePickupAvailable();
 	}
 
+	private static final java.util.concurrent.atomic.AtomicInteger NEXT = new java.util.concurrent.atomic.AtomicInteger(1);
+
+	/** A distinct client address per call (a random one could collide with another call of the same test class and make it flaky). */
 	private static String ip() {
-		return "198.51.100." + (1 + (int) (Math.random() * 250));
+		int n = NEXT.getAndIncrement();
+		return "198.51." + (n / 250 + 100) + "." + (n % 250 + 1);
 	}
 
 	@Test

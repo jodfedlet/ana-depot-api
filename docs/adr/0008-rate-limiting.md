@@ -1,0 +1,8 @@
+# ADR 0008 — Rate limiting
+Status: accepted (implemented: `RateLimiter`, `RateLimitFilter`, `ClientIpResolver`, `rate_limit_counters`).
+
+**Decision.** Fixed-window counters in **PostgreSQL**, shared by every backend instance. One atomic `UPDATE … WHERE request_count < max` per request decides allow/deny; the first request of a window inserts the row, and a lost insert race retries in a **new** transaction (a bug found by the concurrency test: reusing the aborted transaction, and `merge` silently resetting the counter — fixed by `InsertOnlyEntity`). 24 simultaneous requests with limit 3 → exactly 3 allowed (tested).
+Limits are per **operation** and configurable (`ana.rate-limit.limits`), key = authenticated user id, else client IP, so people behind a shared network aren't throttled as one when signed in. Blocked → **429** + `Retry-After` + problem body, counted in `anadepot.ratelimit{operation,result=blocked}` and logged with a **hashed** client key.
+**Client IP safety:** `X-Forwarded-For` is honoured only when the TCP peer is in `ana.rate-limit.trusted-proxies`, read from the right skipping trusted hops; a forged header from an untrusted peer buys nothing (tested). Default `trusted-proxies` is empty.
+**Stricter limits** on guest reservation submit (10/10 min), lookup (20/10 min), upload requests, search; the filter already maps those future paths. Only the public catalog endpoints exist today.
+**Trade-offs:** a database write per limited request and window-boundary bursts. Acceptable at this scale; the store interface is small enough to swap for Redis if traffic ever justifies it. In-memory-only limiting was rejected (wrong with several instances).

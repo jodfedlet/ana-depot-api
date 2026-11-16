@@ -1,0 +1,7 @@
+# ADR 0010 — Observability conventions
+Status: accepted (implemented; Prometheus/tracing export not wired).
+
+* **Logs**: structured JSON (`logging.structured.format.console=ecs`). `CorrelationIdFilter` sets `correlationId` in the MDC (client `X-Correlation-Id` if well formed, else generated), echoes it in the response, and logs **one line per request** (`method path status durationMs`; the **query string is never logged**: it may hold phone numbers or references). The same id is stored on audit events, ledger entries and outbox events, so a request can be followed across all of them. Never log passwords, tokens, secrets or payment-instrument data; events carry no personal data.
+* **Metrics** (Micrometer, `/actuator/metrics`, staff-only): `anadepot.operations{operation=reservation.*, payment.*, currency}`, `anadepot.idempotency{result=replayed|race|key_reuse}`, `anadepot.dedup`, `anadepot.outbox.events{result}`, gauges `anadepot.outbox.pending` / `anadepot.outbox.dead`, `anadepot.ratelimit{operation,result}`, plus Spring's HTTP/Hikari metrics.
+* **Diagnosing without database spelunking**: outbox backlog/dead-letter gauges, `last_error` per event, rate-limit blocked counters, idempotency counters.
+* **Not yet**: a metrics registry for scraping (add `micrometer-registry-prometheus` and a separate management port/network policy — the API's `/actuator/metrics` requires a staff token), distributed tracing, dependency-latency metrics (no external dependency yet), alerting rules.

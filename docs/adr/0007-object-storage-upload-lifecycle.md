@@ -1,0 +1,8 @@
+# ADR 0007 — Presigned object-storage uploads
+Status: accepted (implemented: `UploadService`, `upload_intents`; **no real storage adapter yet**).
+
+**Flow.** staff request → backend validates type/size/authentication/product → creates an **upload intent** with a **server-generated key** (`product-images/{productId}/{uuid}.{ext}`) → returns a **short-lived presigned PUT URL** (`ana.upload.url-ttl`, default 10 min)
+→ browser uploads **directly to storage** → client calls *complete* → the backend inspects **what is actually stored** (size ≤ limit, stored content type = declared, **file signature** matches JPEG/PNG/WebP — the client's MIME claim is not trusted) → attaches the image to the product and marks the intent VERIFIED, or marks it REJECTED and deletes the object.
+**Security properties (tested):** the client never chooses or guesses a key, keys are never reused (no replacement of someone else's object); only the requester can complete (others get 404); completion is repeatable and race-safe (row lock; one image); expired windows are refused; abandoned intents are marked EXPIRED and their objects deleted by an idempotent cleanup (`expireAbandoned`).
+**Transactions:** storage calls happen **outside** database transactions (3 short steps; a rejection is committed before the error is thrown).
+**Boundary:** `ObjectStorage` is a core port; provider SDKs live in infra. The default bean `UnconfiguredObjectStorage` fails closed (`storage_not_configured`) — it is never a fake that pretends to upload. Tests use an in-memory double (clearly a test double). Permanent storage credentials never reach the browser. Retention: VERIFIED objects are kept with their product; REJECTED/EXPIRED are deleted; deletion on product removal is future work.

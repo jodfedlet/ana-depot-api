@@ -1,3 +1,74 @@
 spring:
   application:
-    name: store.api
+    name: ana-depot-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/ana_depot}
+    username: ${DB_USER:ana_depot}
+    password: ${DB_PASSWORD:}          # never committed: provided by the environment / secret store
+    hikari:
+      connection-timeout: 5000
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+  jpa:
+    open-in-view: false                # no lazy loading in the web layer; use cases decide their transactions
+    hibernate:
+      ddl-auto: validate               # the schema belongs to Flyway; Hibernate only verifies the entities match it
+    properties:
+      hibernate:
+        default_batch_fetch_size: 50
+        jdbc.time_zone: UTC
+  flyway:
+    locations: classpath:db/migration
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: 30s
+
+server:
+  shutdown: graceful
+  forward-headers-strategy: none       # X-Forwarded-* are handled by our own trusted-proxy logic, never blindly
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  structured:
+    format:
+      console: ecs                     # JSON logs; the correlationId MDC key is included on every line
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+# Operational limits and external configuration (see docs/auth.md and docs/adr).
+ana:
+  security:
+    jwt-issuer: ${SUPABASE_JWT_ISSUER:}                 # e.g. https://<project-ref>.supabase.co/auth/v1 ; empty = every token is rejected
+    jwt-audience: ${SUPABASE_JWT_AUDIENCE:authenticated}
+    bootstrap-admin-subject: ${ANA_BOOTSTRAP_ADMIN_SUBJECT:}
+  rate-limit:
+    enabled: true
+    trusted-proxies: []                                 # CIDRs/IPs of YOUR reverse proxies; empty = X-Forwarded-For is ignored
+    default-limit: { max-requests: 120, window: PT1M }
+    limits:
+      "[catalog.read]": { max-requests: 300, window: PT1M }
+      "[catalog.search]": { max-requests: 60, window: PT1M }
+      "[reservation.submit]": { max-requests: 10, window: PT10M }
+      "[reservation.lookup]": { max-requests: 20, window: PT10M }
+      "[upload.request]": { max-requests: 30, window: PT1M }
+      "[admin.write]": { max-requests: 240, window: PT1M }
+      "[admin.reindex]": { max-requests: 3, window: PT10M }
+      "[webhook.receive]": { max-requests: 300, window: PT1M }
+  outbox:
+    dispatcher-enabled: true

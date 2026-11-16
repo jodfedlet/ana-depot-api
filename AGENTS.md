@@ -195,28 +195,24 @@ Do not provide a long walkthrough unless requested.
 
 ---
 
+---
+
 ## Regression Safety and Protected Behavior
 
 The test suite is not the sole source of truth for product behavior. Tests must validate established business requirements and invariants; they must not redefine them merely to match a changed implementation.
 
-### Protected Regression Tests
+### Protected regression tests
 
-Critical business behavior must be covered by protected regression tests.
+Critical business behavior must be covered by protected regression tests. For Ana Dépôt these are, at least:
 
-Protected tests include, but are not limited to:
-
-- authentication and authorization;
-- tenant/data isolation;
-- permissions and role assignment;
-- product creation and management;
-- employee creation and management;
-- inventory and stock behavior;
-- POS behavior and POS-specific pricing;
-- billing and subscription behavior;
-- entitlements and feature gates;
-- currencies and financial calculations;
-- accounting and ledger behavior;
-- critical checkout/payment flows.
+- authentication, staff authorization and "deny by default";
+- catalog, categories and category-defined attributes;
+- per-currency product pricing (one product, independent HTG and USD prices, wholesale tiers per currency);
+- money and currency rules (no cross-currency arithmetic, no conversion, no floating point);
+- inventory and stock behavior (shared stock across currencies, `available = onHand - reserved`, no overselling);
+- reservation lifecycle, price/currency snapshots and per-currency totals;
+- payments, per-currency settlement, the payment ledger and reconciliation;
+- idempotency, the transactional outbox, deduplication, rate limiting and the audit trail.
 
 Do not modify a protected regression test merely because the current implementation no longer satisfies it.
 
@@ -228,7 +224,7 @@ When a protected regression test fails after an implementation change:
 4. Do not weaken, remove, or rewrite the assertion simply to make the test pass.
 5. If the intended business behavior has genuinely changed, explicitly identify that behavioral change and obtain human approval before modifying the protected regression test.
 
-### Agent Test Modification Rule
+### Agent test modification rule
 
 An agent may add tests required by a task.
 
@@ -245,22 +241,23 @@ In particular, never:
 
 When implementation and an existing regression test disagree, assume the implementation is wrong until the intended behavior is explicitly established otherwise.
 
-### Business Invariants
+### Business invariants
 
-For behavior that must remain stable across implementations, preserve explicit business invariants.
+For behavior that must remain stable across implementations, preserve explicit business invariants. Ana Dépôt's:
 
-Examples:
-
-- POS pricing is independent from Revofin ERP subscription pricing.
-- Authorization is determined by server-side permissions, not UI visibility.
-- Users without an explicitly granted permission must not receive that permission implicitly.
-- Employee salary currency must be explicitly supported where business and employee currencies can differ.
-- Creating a product must not require unrelated inventory state unless explicitly required by the product domain.
-- Changing one product/module's pricing must not silently alter another product/module's pricing.
+- One product has ONE identity, ONE category, ONE set of attributes, ONE stock position and independent prices per supported currency (HTG, USD). Currency is never an intrinsic property of the product and never inferred from a user's location.
+- Amounts of different currencies are never added, compared or converted. There is no exchange rate anywhere.
+- Stock is shared by every currency: `available = onHand - reserved`, open reservations hold stock, collection deducts it.
+- A reservation snapshots product name, variant, unit, quantity, currency, applied unit price, pricing kind and wholesale tier; later catalog changes never alter it.
+- A reservation has one total per currency. A payment settles only its own currency. The reservation is paid only when every currency is settled, and collection requires it.
+- Financial history is append-only: corrections are reversal or adjustment entries, never edits.
+- Authorization is determined by server-side staff membership, not by token claims, metadata or UI visibility. Users without explicit staff membership never receive staff access.
+- Guests can browse, add to a cart and reserve without an account.
+- Changing one product's price must not silently alter another product's price or any existing reservation.
 
 Tests should assert these invariants rather than implementation details whenever practical.
 
-### Requirement Before Test Changes
+### Requirement before test changes
 
 Before changing an existing regression test, identify:
 
@@ -271,49 +268,22 @@ Before changing an existing regression test, identify:
 
 Do not infer a requirement change from a failing test alone.
 
-### Regression Preservation
+### Regression preservation
 
-Every confirmed production regression must result in a regression test when automation is reasonably possible.
+Every confirmed production regression must result in a regression test when automation is reasonably possible. The regression test must reproduce the original incorrect behavior and verify the intended behavior, and must remain in the suite after the bug is fixed.
 
-The regression test must reproduce the original incorrect behavior and verify the intended behavior.
+### Impact analysis
 
-The test must remain part of the regression suite after the bug is fixed.
+For changes affecting shared behavior, identify directly dependent workflows before modifying tests or implementation. Examples:
 
-### Impact Analysis
-
-For changes affecting shared behavior, identify directly dependent workflows before modifying tests or implementation.
-
-Examples include:
-
-- pricing → billing, subscriptions, entitlements, POS;
-- permissions → roles, users, business settings, protected APIs;
-- currency → payments, accounting, salaries, reports;
-- product → inventory, purchasing, POS, sales;
-- authentication → workspace access, API authorization, frontend routing.
+- pricing -> reservation snapshots, totals, payments;
+- currency -> pricing, totals, payments, ledger, reports;
+- inventory -> reservations, collection, adjustments;
+- reservation lifecycle -> stock, payments, outbox events, audit trail;
+- authentication/authorization -> every protected API and the frontend routing that mirrors it.
 
 Do not assume that a test passing in the directly modified module proves that dependent workflows remain correct.
 
-### Protected Test Ownership
+### Test updates must preserve intent
 
-Protected regression tests should be treated as higher-trust artifacts than agent-generated tests.
-
-When repository controls support it, changes to protected regression tests should require explicit human review.
-
-The preferred repository structure is:
-
-    tests/
-      regression/
-        protected/
-
-The exact location may follow existing repository conventions.
-
-### Test Updates Must Preserve Intent
-
-When implementation details change without changing business behavior:
-
-- update tests only as necessary to follow the implementation boundary;
-- preserve assertions about business outcomes;
-- avoid replacing meaningful assertions with weaker assertions;
-- do not make tests pass by removing the behavior they were designed to protect.
-
----
+When implementation details change without changing business behavior, update tests only as necessary to follow the implementation boundary, preserve assertions about business outcomes, and never make tests pass by removing the behavior they were designed to protect.

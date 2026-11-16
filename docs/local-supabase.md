@@ -23,7 +23,7 @@ supabase db reset --workdir .        # recreate the database
 ```
 Only containers named `supabase_*_ana-depot` belong to this stack. Config: `dev/supabase/config.toml` (project id `ana-depot`): e-mail confirmations **on**, minimum password
 length 8, asymmetric signing key, `site_url` = the web app on port 3100, redirect allow-list for `/{fr,ht}/auth/callback`, high local rate limits (tests create many users),
-`jwt_expiry` 3600 (lower it, e.g. 30, to test expiry, then `supabase stop && supabase start`). Mailpit (mail catcher) UI/API: `http://127.0.0.1:54324` (`/api/v1/messages`).
+`jwt_expiry` 3600 (lower it, e.g. 20, to test expiry, then `supabase stop && supabase start && docker restart supabase_auth_ana-depot`). Mailpit (mail catcher) UI/API: `http://127.0.0.1:54324` (`/api/v1/messages`).
 `signing_key.json` must never be committed (`dev/.gitignore`).
 
 URLs: API gateway `http://127.0.0.1:54321` (Auth `/auth/v1`, JWKS `/auth/v1/.well-known/jwks.json`, Data API `/rest/v1`); Postgres `127.0.0.1:54322` (user `postgres`, password `postgres` are
@@ -35,13 +35,60 @@ the well-known local-CLI dev values). Do not paste the local secret key anywhere
 | Stack configured and started (Auth, PostgREST, Postgres, Mailpit, Kong), ES256 signing | done; JWKS serves the ES256 key; tokens are `alg=ES256` with that `kid` |
 | Storage disabled | done (`[storage] enabled=false`, container stopped) |
 | Real token claims / sign-up behavior recorded | done (below) |
-| Backend verified with real tokens (separate Postgres container) | done (below) |
-| Backend on Supabase Postgres (dedicated schema + role), Flyway/validate, Data API exposure | in progress |
-| Supabase UI block evaluation | done: not adopted as the forms (reasons below) |
-| Privacy change (sign-up) in the web app | in progress |
-| Env names (`NEXT_PUBLIC_API_BASE_URL`, publishable key) | pending |
-| Real-stack browser suite `ana-depot-web/e2e/real-supabase` | pending |
-| Web checks (tsc, lint, vitest, build, stub suites) | pending |
+| Backend verified with real tokens | done (below) |
+| Backend on Supabase Postgres (dedicated schema + role), Flyway/validate | done (below) |
+| Data API exposure test | done: **critical finding** if app tables live in `public` (below) |
+| Short-expiry behavior | done (below) |
+| Supabase UI block | adopted as source-copied components in `ana-depot-web` (see its `docs/authentication.md`) |
+| Privacy change (uniform sign-up) | done in the web app; provider-level disclosure documented |
+| Real-stack browser suite `ana-depot-web/e2e/real-supabase` (`npm run e2e:real`) | done: 59 checks passed against this stack + the Phase 2 API snapshot |
+
+## Auth e-mail templates (bilingual, token_hash links)
+`dev/supabase/templates/{confirmation,recovery}.html` are loaded through `[auth.email.template.*] content_path` (paths are relative to the **project root**, i.e. `./supabase/templates/...`). They read
+`user_metadata.locale` (sent at sign-up) to pick French or Haitian Creole (Creole text needs native review) and link to `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup|recovery`, so the link works in
+any browser or device and for "resend". **Local-stack quirk:** GoTrue fetches the templates from Kong at startup and silently falls back to the default English templates if Kong is not ready yet
+(`templatemailer_template_body_http_error ... connection refused` in `docker logs supabase_auth_ana-depot`). If the e-mails look like the default ones, run `docker restart supabase_auth_ana-depot`
+after `supabase start`. Without the custom template the default link goes through GoTrue `/verify` and (for a resent mail) ends in an implicit-flow URL fragment that the app does not accept.
+
+## Backend on Supabase Postgres (dedicated role and schema)
+The backend never uses the `postgres` superuser-like role or the `public` schema. One-time setup (local values; the password is a dev-only example):
+```bash
+docker exec -i supabase_db_ana-depot psql -U postgres <<'SQL'
+create role ana_depot_app login password 'change-me-dev-only';   -- no superuser/createdb/createrole
+grant ana_depot_app to postgres;                                   -- needed: `postgres` is not a superuser on Supabase
+create schema ana_depot authorization ana_depot_app;
+SQL
+```
+Connection URL shape: `jdbc:postgresql://127.0.0.1:54322/postgres?currentSchema=ana_depot` with user `ana_depot_app` (`DB_URL`, `DB_USER`, `DB_PASSWORD`). `currentSchema` makes both Flyway and Hibernate (`ddl-auto=validate`) use that schema.
+Result: Flyway V1-V5 applied, `validate` passed, the API started and answered `/actuator/health` UP. Hosted projects: use the direct or pooler connection string for a role created the same way.
+
+### Data API (anon key) test: findings
+PostgREST exposes only `public` and `graphql_public`.
+* **Dedicated schema `ana_depot`: not reachable.** `GET /rest/v1/staff_members` with `Accept-Profile: ana_depot` and the anon key returns `PGRST106 Invalid schema: ana_depot`; with the default profile it returns 404 (no such relation in `public`).
+* **CRITICAL if the tables are created in `public` as `postgres`** (tested, then cleaned up): Supabase's default privileges grant `anon`, `authenticated` and `service_role` access to tables created by `postgres` in `public`. With the public anon key
+  anyone could read all rows **and write them**: an anonymous `INSERT` into `staff_members` returned **201**, which is a privilege-escalation path (the backend trusts that table for staff membership). Never create the application tables in `public`
+  (or, if ever required, enable RLS with no policies and `revoke all ... from anon, authenticated`). On hosted projects also review "Exposed schemas" in the API settings and the default-privileges of the `postgres` role.
+* The backend itself is unaffected by this: it connects as `ana_depot_app` over JDBC and verifies JWTs itself.
+
+## Expiry and refresh (measured with `jwt_expiry = 20`, then restored to 3600)
+* The backend rejected an expired real token with 401 only after about `exp + 60 s`: Spring's `JwtTimestampValidator` has a **default clock skew of 60 s**. Access tokens are verified offline, so after logout/revocation they stay valid until `exp` (+skew).
+* A fresh token after re-login: 200. `refresh_token` grant returns a new access and refresh token; replaying the previous refresh token immediately after rotation answered HTTP 200 (GoTrue keeps a short reuse window), later replays are rejected.
+* The web app refreshes the session in `proxy.ts` (`getClaims()`) and in the browser client; the real suite proves an expired access token with a valid refresh token still opens `/account` and the cookie is rotated.
+
+## Limitations of the local stack
+* **Key rotation is not testable here:** `[auth] signing_keys_path` accepts exactly ONE key in CLI 2.67.1 (a second key made `supabase start` fail with "multiple signing keys detected, only 1 signing key is supported"). JWKS rotation must be verified on a hosted project.
+* SMTP delivery, hosted rate limits, CAPTCHA, leaked-password protection and dashboard settings are not exercised.
+
+## Hosted project checklist (NOT done by anything here; hosted behavior is untested)
+In the Supabase dashboard of the real project:
+1. **URL Configuration:** Site URL = the production web origin; Redirect URLs allow-list `https://<domain>/fr/auth/callback` and `/ht/auth/callback` (add preview/staging origins deliberately).
+2. **Authentication -> Sign In / Providers:** Email enabled, **Confirm email ON**, minimum password length 8+, enable leaked-password protection if the plan offers it; disable providers you do not use; decide about public sign-ups (see the privacy note in the web docs).
+3. **Emails:** custom SMTP (the built-in sender is rate limited and for testing only); paste the two templates from `dev/supabase/templates/` (token_hash links) and set the subjects; have the Creole text reviewed.
+4. **JWT signing keys:** use asymmetric signing keys (ES256/RS256) and rotate on a schedule; the backend must use the project JWKS (`SUPABASE_JWT_ISSUER=https://<ref>.supabase.co/auth/v1`, exact match, no trailing slash). Set JWT expiry (default 3600 s) deliberately and remember the +60 s skew and offline verification.
+5. **Rate limits / CAPTCHA:** review the Auth rate limits (sign-ups, sign-ins, e-mails) and enable CAPTCHA (Turnstile/hCaptcha) if abuse appears.
+6. **Data API:** keep application tables out of `public`; review exposed schemas; the app's data belongs to the backend database role, not to the Data API.
+7. **Keys:** only the publishable/anon key goes into the web app (`NEXT_PUBLIC_*`, build-time); the secret/service-role key is never used by the web app or the backend and must not appear in any `NEXT_PUBLIC_*` variable.
+8. First administrator: create the user, then insert its `sub` into `staff_members` through the documented backend procedure.
 
 ## Real behavior of Supabase Auth (GoTrue v2.184.0, confirmations ON), measured
 **Access token (ES256).** Header `{alg: ES256, kid: <JWKS kid>, typ: JWT}`. Claims actually emitted:
@@ -82,13 +129,6 @@ Setup: `SUPABASE_JWT_ISSUER=http://127.0.0.1:54321/auth/v1`, default audience `a
 | After logout, same access token | still 200 until `exp` (documented offline-verification trade-off); refresh token revoked |
 Not measured: expiry rejection of a real expired token and JWKS key rotation (see the section below once run).
 
-## Supabase UI "password-based auth" block: evaluation (not adopted as the forms)
-Registry `https://supabase.com/library/r/password-based-auth-nextjs.json` was read before installing anything. It adds source files (pages under `app/auth/*`, five form components,
-`app/auth/confirm/route.ts`, `lib/supabase/{client,server,middleware}.ts`, `middleware.ts`) and shadcn `button card input label` (which in turn bring `cn`, clsx, tailwind-merge, class-variance-authority, radix slot/label and
-shadcn's CSS variable theme). Findings against our requirements:
-* `lib/supabase/middleware.ts` redirects **every unauthenticated request to `/auth/login`**: unusable for a public storefront; Next 16 uses `proxy.ts` (ours already refreshes the session with `getClaims()` without redirecting).
-* Forms hardcode English literals, `/auth/*` and `/protected` paths with `next/link`/`next/navigation` (not locale-aware), and **render `error.message` straight from Supabase** (this would print "User already registered": the enumeration disclosure).
-* No resend-verification, no validation/accessibility handling (aria wiring, focus on first invalid), no name fields; the confirm route's `next` check (`startsWith('/')`) accepts `//evil.example` (open redirect) and puts `error.message` in the redirect URL.
-* Using it means a second visual language (shadcn theme) and ~5 new dependencies, or replacing its imports with our primitives and rewriting its strings/errors/redirects: what remains is the same `useState` + `supabase.auth.*` skeleton our forms already are.
-Conclusion: the block cannot meet the requirements (locale routing, privacy, design system, security of the confirm route) without being rewritten line by line, so it was **not forced**. One valuable idea it contains is adopted as a **recommendation**, not
-implemented: the server-side `token_hash` + `verifyOtp` confirmation route with custom e-mail templates, which works when the link is opened in a different browser or device (our current PKCE link needs the same browser).
+## Supabase UI "password-based auth" block
+Adopted by `ana-depot-web` as source-copied components (not a hosted portal, not `@supabase/auth-ui-react`). The registry `https://supabase.com/library/r/password-based-auth-nextjs.json` was read first. What was kept and what was not copied
+(its own Supabase clients and its `middleware`, which redirects every unauthenticated request to the login) is documented in `ana-depot-web/docs/authentication.md`.

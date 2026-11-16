@@ -1,0 +1,12 @@
+<!-- Ana Dépôt - password recovery (server-side token_hash flow; see confirmation.html). -->
+{{ if eq (printf "%v" .Data.locale) "ht" }}
+<h2>Chanje modpas ou</h2>
+<p>Klike sou lyen an pou w chwazi yon nouvo modpas :</p>
+<p><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery">Chanje modpas mwen</a></p>
+<p>Si w pa t mande sa, ou ka inyore mesaj sa a: modpas ou pa chanje.</p>
+{{ else }}
+<h2>Réinitialisez votre mot de passe</h2>
+<p>Cliquez sur le lien pour choisir un nouveau mot de passe :</p>
+<p><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery">Réinitialiser mon mot de passe</a></p>
+<p>Si vous n'avez rien demandé, ignorez ce message : votre mot de passe ne change pas.</p>
+{{ end }}

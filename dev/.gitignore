@@ -1,0 +1,8 @@
+# Generated, never committed: private JWT signing key and local secrets of the dev stack
+supabase/signing_key.json
+supabase/.env
+supabase/.temp/
+supabase/.branches/
+.env
+.env.local
+*.local

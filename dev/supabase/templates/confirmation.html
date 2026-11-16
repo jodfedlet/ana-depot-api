@@ -1,0 +1,13 @@
+<!-- Ana Dépôt - sign-up confirmation. Server-side token_hash flow: works when the link is opened in ANY browser/device, for sign-up AND for "resend".
+     {{ .RedirectTo }} is the web app's /{locale}/auth/callback?next=... URL that the web app sent; the callback verifies the token and sets the session cookie. -->
+{{ if eq (printf "%v" .Data.locale) "ht" }}
+<h2>Konfime adrès imèl ou</h2>
+<p>Mèsi paske w kreye yon kont Ana Dépôt. Klike sou lyen an pou w konfime adrès imèl ou :</p>
+<p><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup">Konfime adrès imèl mwen</a></p>
+<p>Si w pa t mande kont sa a, ou ka inyore mesaj sa a.</p>
+{{ else }}
+<h2>Confirmez votre adresse e-mail</h2>
+<p>Merci d'avoir créé un compte Ana Dépôt. Cliquez sur le lien pour confirmer votre adresse e-mail :</p>
+<p><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup">Confirmer mon adresse e-mail</a></p>
+<p>Si vous n'avez pas demandé ce compte, ignorez ce message.</p>
+{{ end }}

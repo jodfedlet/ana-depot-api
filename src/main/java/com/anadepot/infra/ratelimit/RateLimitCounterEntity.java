@@ -10,7 +10,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "rate_limit_counters")
 @IdClass(RateLimitCounterEntity.Key.class)
-class RateLimitCounterEntity {
+class RateLimitCounterEntity extends com.anadepot.infra.persistence.InsertOnlyEntity<RateLimitCounterEntity.Key> {
 
 	@Id
 	String bucket;
@@ -19,6 +19,11 @@ class RateLimitCounterEntity {
 	int requestCount;
 
 	protected RateLimitCounterEntity() {
+	}
+
+	@Override
+	public Key getId() {
+		return new Key(bucket, windowStart);
 	}
 
 	record Key(String bucket, Instant windowStart) implements Serializable {

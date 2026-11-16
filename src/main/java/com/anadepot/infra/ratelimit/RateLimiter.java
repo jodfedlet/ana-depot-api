@@ -56,7 +56,13 @@ public class RateLimiter {
 		long windowMs = limit.window().toMillis();
 		var windowStart = Instant.ofEpochMilli(now.toEpochMilli() / windowMs * windowMs);
 		var bucket = operation + "|" + clientKey;
-		boolean allowed = Boolean.TRUE.equals(tx.execute(s -> tryAcquire(bucket, windowStart, limit.maxRequests())));
+		boolean allowed;
+		try {
+			allowed = Boolean.TRUE.equals(tx.execute(s -> tryAcquire(bucket, windowStart, limit.maxRequests())));
+		} catch (DataIntegrityViolationException raced) {
+			// Another request created the window's row first. PostgreSQL aborted that transaction, so retry in a NEW one.
+			allowed = Boolean.TRUE.equals(tx.execute(s -> repository.increment(bucket, windowStart, limit.maxRequests()) == 1));
+		}
 		if (allowed) {
 			return new RateLimitDecision(true, Duration.ZERO);
 		}
@@ -73,16 +79,12 @@ public class RateLimiter {
 		if (repository.existsByBucketAndWindowStart(bucket, windowStart)) {
 			return false; // row exists and is full
 		}
-		try {
-			var row = new RateLimitCounterEntity();
-			row.bucket = bucket;
-			row.windowStart = windowStart;
-			row.requestCount = 1;
-			repository.saveAndFlush(row);
-			return true;
-		} catch (DataIntegrityViolationException raced) {
-			return repository.increment(bucket, windowStart, max) == 1; // another instance created the row first
-		}
+		var row = new RateLimitCounterEntity();
+		row.bucket = bucket;
+		row.windowStart = windowStart;
+		row.requestCount = 1;
+		repository.saveAndFlush(row);   // a concurrent creator makes this fail: handled by the caller, in a fresh transaction
+		return true;
 	}
 
 	@Scheduled(fixedDelayString = "PT15M")

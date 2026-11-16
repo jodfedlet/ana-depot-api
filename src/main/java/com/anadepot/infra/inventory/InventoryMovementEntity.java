@@ -12,7 +12,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "inventory_movements")
-class InventoryMovementEntity {
+class InventoryMovementEntity extends com.anadepot.infra.persistence.InsertOnlyEntity<UUID> {
 
 	@Id
 	UUID id;
@@ -29,5 +29,10 @@ class InventoryMovementEntity {
 	UUID recordedBy;
 
 	protected InventoryMovementEntity() {
+	}
+
+	@Override
+	public UUID getId() {
+		return id;
 	}
 }

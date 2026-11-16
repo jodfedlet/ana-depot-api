@@ -4,8 +4,10 @@ import com.anadepot.core.customer.model.Customer;
 import com.anadepot.core.customer.repository.CustomerRepository;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@Transactional
 class CustomerRepositoryAdapter implements CustomerRepository {
 
 	private final CustomerJpaRepository jpa;

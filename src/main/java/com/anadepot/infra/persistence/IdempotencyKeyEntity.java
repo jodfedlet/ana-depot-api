@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "idempotency_keys")
-class IdempotencyKeyEntity {
+class IdempotencyKeyEntity extends com.anadepot.infra.persistence.InsertOnlyEntity<UUID> {
 
 	@Id
 	UUID id;
@@ -21,5 +21,10 @@ class IdempotencyKeyEntity {
 	Instant expiresAt;
 
 	protected IdempotencyKeyEntity() {
+	}
+
+	@Override
+	public UUID getId() {
+		return id;
 	}
 }

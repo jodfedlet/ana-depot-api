@@ -13,7 +13,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "payments")
-class PaymentEntity {
+class PaymentEntity extends com.anadepot.infra.persistence.InsertOnlyEntity<UUID> {
 
 	@Id
 	UUID id;
@@ -30,5 +30,10 @@ class PaymentEntity {
 	String note;
 
 	protected PaymentEntity() {
+	}
+
+	@Override
+	public UUID getId() {
+		return id;
 	}
 }

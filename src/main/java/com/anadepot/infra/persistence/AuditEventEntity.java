@@ -10,7 +10,7 @@ import org.hibernate.annotations.ColumnTransformer;
 
 @Entity
 @Table(name = "audit_events")
-public class AuditEventEntity {
+public class AuditEventEntity extends com.anadepot.infra.persistence.InsertOnlyEntity<UUID> {
 
 	@Id
 	UUID id;
@@ -32,7 +32,11 @@ public class AuditEventEntity {
 	protected AuditEventEntity() {
 	}
 
-	public UUID getId() { return id; }
+	@Override
+	public UUID getId() {
+		return id;
+	}
+
 	public Instant getOccurredAt() { return occurredAt; }
 	public String getActorKind() { return actorKind; }
 	public UUID getActorUserId() { return actorUserId; }

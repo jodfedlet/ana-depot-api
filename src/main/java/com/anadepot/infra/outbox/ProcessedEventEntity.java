@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "processed_events")
-class ProcessedEventEntity {
+class ProcessedEventEntity extends com.anadepot.infra.persistence.InsertOnlyEntity<UUID> {
 
 	@Id
 	UUID id;
@@ -19,5 +19,10 @@ class ProcessedEventEntity {
 	Instant lastDuplicateAt;
 
 	protected ProcessedEventEntity() {
+	}
+
+	@Override
+	public UUID getId() {
+		return id;
 	}
 }

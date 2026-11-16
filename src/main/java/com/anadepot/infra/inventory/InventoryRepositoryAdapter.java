@@ -8,8 +8,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@Transactional
 class InventoryRepositoryAdapter implements InventoryRepository {
 
 	private final InventoryItemJpaRepository items;
@@ -49,6 +51,16 @@ class InventoryRepositoryAdapter implements InventoryRepository {
 	@Override
 	public Optional<InventoryItem> findForUpdate(UUID productId, UUID variantId) {
 		return (variantId == null ? items.lockForProduct(productId) : items.lockForVariant(variantId)).map(InventoryRepositoryAdapter::toDomain);
+	}
+
+	@Override
+	public java.util.Map<UUID, List<InventoryItem>> findAllForProducts(java.util.Collection<UUID> productIds) {
+		var result = new java.util.HashMap<UUID, List<InventoryItem>>();
+		if (productIds.isEmpty()) {
+			return result;
+		}
+		items.findAllForProducts(productIds).forEach(e -> result.computeIfAbsent(e.productId, k -> new java.util.ArrayList<>()).add(toDomain(e)));
+		return result;
 	}
 
 	@Override

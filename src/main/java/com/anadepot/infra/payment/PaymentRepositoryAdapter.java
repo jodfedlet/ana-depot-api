@@ -9,8 +9,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@Transactional
 class PaymentRepositoryAdapter implements PaymentRepository {
 
 	private final PaymentJpaRepository payments;

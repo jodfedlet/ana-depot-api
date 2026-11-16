@@ -23,4 +23,7 @@ interface InventoryItemJpaRepository extends JpaRepository<InventoryItemEntity, 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select i from InventoryItemEntity i where i.variantId = :variantId")
 	Optional<InventoryItemEntity> lockForVariant(UUID variantId);
+
+	@Query("select i from InventoryItemEntity i where i.productId in :productIds")
+	java.util.List<InventoryItemEntity> findAllForProducts(java.util.Collection<UUID> productIds);
 }

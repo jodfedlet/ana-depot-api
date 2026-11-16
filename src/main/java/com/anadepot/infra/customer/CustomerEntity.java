@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "customers")
-class CustomerEntity {
+public class CustomerEntity {
 
 	@Id
 	UUID id;
@@ -22,5 +22,9 @@ class CustomerEntity {
 	Instant updatedAt;
 
 	protected CustomerEntity() {
+	}
+
+	public UUID id() {
+		return id;
 	}
 }

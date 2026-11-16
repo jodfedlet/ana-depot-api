@@ -16,6 +16,10 @@ public final class Json {
 		return MAPPER.writeValueAsString(value);
 	}
 
+	public static <T> T read(String json, Class<T> type) {
+		return MAPPER.readValue(json, type);
+	}
+
 	public static Map<String, Object> readMap(String json) {
 		return json == null || json.isBlank() ? Map.of() : MAPPER.readValue(json, new TypeReference<Map<String, Object>>() { });
 	}

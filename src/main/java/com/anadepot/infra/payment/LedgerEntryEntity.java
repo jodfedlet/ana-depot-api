@@ -13,7 +13,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "ledger_entries")
-class LedgerEntryEntity {
+class LedgerEntryEntity extends com.anadepot.infra.persistence.InsertOnlyEntity<UUID> {
 
 	@Id
 	UUID id;
@@ -31,5 +31,10 @@ class LedgerEntryEntity {
 	String correlationId;
 
 	protected LedgerEntryEntity() {
+	}
+
+	@Override
+	public UUID getId() {
+		return id;
 	}
 }

@@ -12,7 +12,7 @@ import org.hibernate.generator.EventType;
 
 @Entity
 @Table(name = "outbox_events")
-class OutboxEventEntity {
+class OutboxEventEntity extends com.anadepot.infra.persistence.InsertOnlyEntity<UUID> {
 
 	@Id
 	UUID id;
@@ -36,5 +36,10 @@ class OutboxEventEntity {
 	Instant processedAt;
 
 	protected OutboxEventEntity() {
+	}
+
+	@Override
+	public UUID getId() {
+		return id;
 	}
 }

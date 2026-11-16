@@ -9,7 +9,7 @@ create table outbox_events (
     aggregate_id      uuid         not null,
     aggregate_version bigint       not null,
     payload           jsonb        not null,
-    correlation_id    varvarchar(64),
+    correlation_id    varchar(64),
     created_at        timestamptz  not null,
     status            varchar(12)  not null default 'PENDING' check (status in ('PENDING', 'PROCESSING', 'PROCESSED', 'DEAD')),
     attempts          integer      not null default 0,
@@ -54,11 +54,11 @@ create table audit_events (
     actor_user_id   uuid,
     action          varchar(60)  not null,
     target_type     varchar(40)  not null,
-    target_id       varvarchar(64)  not null,
+    target_id       varchar(64)  not null,
     previous_values jsonb        not null default '{}'::jsonb,
     new_values      jsonb        not null default '{}'::jsonb,
     reason          text,
-    correlation_id  varvarchar(64)
+    correlation_id  varchar(64)
 );
 create index audit_target_idx on audit_events (target_type, target_id, occurred_at);
 create trigger audit_events_immutable before update or delete on audit_events for each row execute function prevent_mutation();

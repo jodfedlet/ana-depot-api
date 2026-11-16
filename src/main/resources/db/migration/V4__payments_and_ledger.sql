@@ -30,7 +30,7 @@ create table ledger_entries (
     reason            text,
     created_at        timestamptz   not null,
     created_by        uuid,
-    correlation_id    varvarchar(64),
+    correlation_id    varchar(64),
     foreign key (reservation_id, currency) references reservation_totals (reservation_id, currency),
     unique (id, currency),
     foreign key (reverses_entry_id, currency) references ledger_entries (id, currency),   -- a reversal is in the same currency

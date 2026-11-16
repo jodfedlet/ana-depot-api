@@ -53,7 +53,7 @@ create table category_attribute_options (
 
 create table products (
     id            uuid         primary key,
-    sku           varvarchar(64)  unique,
+    sku           varchar(64)  unique,
     slug          varchar(120) not null unique,
     category_id   uuid         not null references categories (id),
     name          jsonb        not null check (jsonb_typeof(name) = 'object' and name <> '{}'::jsonb),
@@ -94,7 +94,7 @@ create table product_images (
 create table product_variants (
     id         uuid        primary key,
     product_id uuid        not null references products (id) on delete cascade,
-    sku        varvarchar(64) not null unique deferrable initially deferred,
+    sku        varchar(64) not null unique deferrable initially deferred,
     active     boolean     not null default true,
     position   integer     not null default 0,
     unique (id, product_id)  -- target of composite foreign keys: a variant always belongs to the stated product

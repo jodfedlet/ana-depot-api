@@ -39,7 +39,7 @@ create table reservation_lines (
     product_id       uuid          not null references products (id),
     variant_id       uuid,
     product_name     text          not null,
-    product_sku      varvarchar(64),
+    product_sku      varchar(64),
     variant_label    text,
     selling_unit     varchar(20)   not null,
     quantity         integer       not null check (quantity > 0),

@@ -14,20 +14,32 @@ Project layout and the identity cleanup of the original generated skeleton: [doc
 ## Run it locally
 ```bash
 export JAVA_HOME=~/.sdkman/candidates/java/25.0.1-tem
-export DB_PASSWORD=<choose>                      # compose.yaml refuses to start without it
-docker compose up -d postgres
-cp .env.example .env                             # placeholders only; export them in your shell (nothing reads .env automatically)
-DB_URL=jdbc:postgresql://localhost:5432/ana_depot DB_USER=ana_depot DB_PASSWORD=$DB_PASSWORD mvn spring-boot:run
+cp .env.example .env                              # placeholders only; Spring does not read .env: load it into your shell
+$EDITOR .env                                      # at least SPRING_DATASOURCE_PASSWORD
+set -a; source .env; set +a
+docker compose up -d postgres                     # compose.yaml refuses to start without SPRING_DATASOURCE_PASSWORD
+SPRING_PROFILES_ACTIVE=local mvn spring-boot:run  # `local` supplies jdbc:postgresql://localhost:5432/ana_depot and the user ana_depot
 curl localhost:8080/actuator/health
 curl localhost:8080/api/v1/products
 ```
 Flyway creates the schema on startup (`src/main/resources/db/migration`). Hibernate only **validates** that entities match it.
 
+### Profiles
+| Profile | Purpose |
+|---|---|
+| (none) | base `application.yaml`: no datasource defaults, so nothing starts against an unintended database |
+| `local` | development: localhost database, small pool, readable logs |
+| `prod` | production: explicit Hikari limits, JSON logs, **refuses to start** when the database URL/user/password or the token issuer is missing |
+| `test` | used by the test suite (Testcontainers supply the datasource) |
+
 ### Configuration (environment)
 | Variable | Meaning |
 |---|---|
-| `DB_URL`, `DB_USER`, `DB_PASSWORD` | PostgreSQL. No default password. |
-| `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1`. **Empty = every token is rejected** (fail closed). |
+| `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | PostgreSQL (Supabase in production, see [docs/supabase-database.md](docs/supabase-database.md)). No defaults except profile `local`. |
+| `SPRING_FLYWAY_URL`, `SPRING_FLYWAY_USER`, `SPRING_FLYWAY_PASSWORD` | optional separate (direct/session) connection for migrations; required when the application uses the transaction pooler |
+| `SUPABASE_URL` | project URL; the token issuer defaults to `<SUPABASE_URL>/auth/v1` |
+| `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1`. With `SUPABASE_URL` also empty, **every token is rejected** (fail closed). |
+| `SUPABASE_JWKS_URL` | optional override of `<issuer>/.well-known/jwks.json` (private network, proxy, local stack) |
 | `SUPABASE_JWT_AUDIENCE` | default `authenticated` |
 | `ANA_BOOTSTRAP_ADMIN_SUBJECT` | Supabase user id (UUID) of the first store administrator; one-time ([docs/auth.md](docs/auth.md)) |
 | `ana.*` (application.yaml) | idempotency retention, outbox batch/backoff/attempts, rate limits per operation, trusted proxies, upload TTL/size/types |

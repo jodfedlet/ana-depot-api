@@ -1,13 +1,14 @@
 spring:
   application:
     name: ana-depot-api
+  # The datasource has NO defaults here: the URL, user and password come from SPRING_DATASOURCE_URL / SPRING_DATASOURCE_USERNAME /
+  # SPRING_DATASOURCE_PASSWORD (Spring Boot binds them natively) or from the `local` profile. Never commit real values.
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/ana_depot}
-    username: ${DB_USER:ana_depot}
-    password: ${DB_PASSWORD:}          # never committed: provided by the environment / secret store
     hikari:
-      connection-timeout: 5000
-      maximum-pool-size: ${DB_POOL_SIZE:10}
+      pool-name: ana-depot
+      connection-timeout: 5000          # fail fast: a request should not wait on the pool for longer than a user will
+      validation-timeout: 3000
+      initialization-fail-timeout: 10000 # fail the start-up quickly when the database cannot be reached
   jpa:
     open-in-view: false                # no lazy loading in the web layer; use cases decide their transactions
     hibernate:
@@ -54,7 +55,9 @@ springdoc:
 # Operational limits and external configuration (see docs/auth.md and docs/adr).
 ana:
   security:
-    jwt-issuer: ${SUPABASE_JWT_ISSUER:}                 # e.g. https://<project-ref>.supabase.co/auth/v1 ; empty = every token is rejected
+    supabase-url: ${SUPABASE_URL:}                       # project URL; the issuer defaults to <supabase-url>/auth/v1 when SUPABASE_JWT_ISSUER is empty
+    jwt-issuer: ${SUPABASE_JWT_ISSUER:}                 # e.g. https://<project-ref>.supabase.co/auth/v1 ; with supabase-url also empty = every token is rejected
+    jwks-uri: ${SUPABASE_JWKS_URL:}                     # optional override of <issuer>/.well-known/jwks.json (private network, proxy)
     jwt-audience: ${SUPABASE_JWT_AUDIENCE:authenticated}
     bootstrap-admin-subject: ${ANA_BOOTSTRAP_ADMIN_SUBJECT:}
   rate-limit:
@@ -66,6 +69,9 @@ ana:
       "[catalog.search]": { max-requests: 60, window: PT1M }
       "[reservation.submit]": { max-requests: 10, window: PT10M }
       "[reservation.lookup]": { max-requests: 20, window: PT10M }
+      "[reservation.lookup.reference]": { max-requests: 30, window: PT10M }   # per reference, whatever the caller: stops phone guessing from many addresses
+      "[account.read]": { max-requests: 120, window: PT1M }
+      "[account.write]": { max-requests: 20, window: PT10M }
       "[upload.request]": { max-requests: 30, window: PT1M }
       "[admin.write]": { max-requests: 240, window: PT1M }
       "[admin.reindex]": { max-requests: 3, window: PT10M }

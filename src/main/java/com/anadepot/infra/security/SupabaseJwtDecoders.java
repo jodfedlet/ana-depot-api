@@ -23,14 +23,23 @@ public final class SupabaseJwtDecoders {
 	}
 
 	public static JwtDecoder fromIssuer(String issuer, String audience) {
-		var jwks = issuer.replaceAll("/+$", "") + "/.well-known/jwks.json";
-		var decoder = NimbusJwtDecoder.withJwkSetUri(jwks)
+		return fromIssuer(issuer, audience, null);
+	}
+
+	/** {@code jwksUri}: optional override of where the signing keys are fetched from (a private network address, a proxy); the issuer claim is still checked against {@code issuer}. */
+	public static JwtDecoder fromIssuer(String issuer, String audience, String jwksUri) {
+		var decoder = NimbusJwtDecoder.withJwkSetUri(jwksUri(issuer, jwksUri))
 				.jwsAlgorithms(a -> {
 					a.add(SignatureAlgorithm.ES256);
 					a.add(SignatureAlgorithm.RS256);
 				}).build();
 		decoder.setJwtValidator(validators(issuer, audience));
 		return decoder;
+	}
+
+	/** The override when given, else {@code <issuer>/.well-known/jwks.json} (Supabase's published key set). */
+	static String jwksUri(String issuer, String override) {
+		return override != null && !override.isBlank() ? override.strip() : issuer.replaceAll("/+$", "") + "/.well-known/jwks.json";
 	}
 
 	/** Same validation with a fixed public key: used by tests with locally generated keys (NOT a Supabase integration test). */

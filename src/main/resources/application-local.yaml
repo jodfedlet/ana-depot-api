@@ -1,0 +1,13 @@
+# Local development: `mvn spring-boot:run -Dspring-boot.run.profiles=local` with the compose.yaml database.
+# Only the non-secret defaults live here; the password is SPRING_DATASOURCE_PASSWORD (same value as compose.yaml).
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ana_depot
+    username: ana_depot
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+logging:
+  structured:
+    format:
+      console: ""                       # readable console output instead of JSON

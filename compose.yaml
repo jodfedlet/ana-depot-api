@@ -1,11 +1,12 @@
-# Local development database only. Credentials come from the environment (see README); nothing is hardcoded.
+# Local development database only (profile `local`). Credentials come from the environment (see README); nothing is hardcoded.
+# The variable names are the ones Spring Boot reads, so the same shell/.env feeds both the database and the application.
 services:
   postgres:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: ana_depot
-      POSTGRES_USER: ${DB_USER:-ana_depot}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in your shell or .env}
+      POSTGRES_USER: ${SPRING_DATASOURCE_USERNAME:-ana_depot}
+      POSTGRES_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?set SPRING_DATASOURCE_PASSWORD in your shell or .env}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:

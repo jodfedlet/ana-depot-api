@@ -50,11 +50,12 @@ class SecurityConfig {
 	@Bean
 	JwtDecoder jwtDecoder(AnaProperties properties) {
 		var security = properties.security();
-		if (security.jwtIssuer() == null || security.jwtIssuer().isBlank()) {
+		var issuer = security.effectiveIssuer();
+		if (issuer == null) {
 			return token -> {
 				throw new BadJwtException("Authentication is not configured");
 			};
 		}
-		return SupabaseJwtDecoders.fromIssuer(security.jwtIssuer(), security.jwtAudience());
+		return SupabaseJwtDecoders.fromIssuer(issuer, security.jwtAudience(), security.jwksUri());
 	}
 }

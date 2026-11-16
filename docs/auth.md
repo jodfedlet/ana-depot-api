@@ -56,7 +56,9 @@ deny-list keyed by `jti`/session id — not built.
 ## Environment
 | Variable | Where | Notes |
 |---|---|---|
-| `SUPABASE_JWT_ISSUER` | backend | `https://<project-ref>.supabase.co/auth/v1` |
+| `SUPABASE_URL` | backend | project URL; when `SUPABASE_JWT_ISSUER` is empty the issuer is `<SUPABASE_URL>/auth/v1` |
+| `SUPABASE_JWT_ISSUER` | backend | `https://<project-ref>.supabase.co/auth/v1` (wins over `SUPABASE_URL`) |
+| `SUPABASE_JWKS_URL` | backend, optional | where the signing keys are fetched from; default `<issuer>/.well-known/jwks.json`. The `iss` claim is still checked against the issuer, whatever the key URL (tested) |
 | `SUPABASE_JWT_AUDIENCE` | backend | default `authenticated` |
 | `ANA_BOOTSTRAP_ADMIN_SUBJECT` | backend, one-time | user id of the first admin |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | frontend (public) | the anon key is public by design |
@@ -66,7 +68,8 @@ Legacy Supabase projects that sign tokens with a shared HS256 secret are **not s
 Never commit real values: `.env.example` has placeholders only.
 
 ## Local development
-Run the backend with `SUPABASE_JWT_ISSUER` of a Supabase project (a free project is enough) or leave it empty to work only with public endpoints.
+Run the backend with `SUPABASE_URL` (or `SUPABASE_JWT_ISSUER`) of a Supabase project (a free project is enough), or of the local stack ([local-supabase.md](local-supabase.md); then `SUPABASE_JWKS_URL` may point to the stack's JWKS), or leave both empty to work only with public endpoints.
+The database connection (Supabase PostgreSQL) is documented in [supabase-database.md](supabase-database.md).
 
 ## Testing honesty
 * `SecurityIntegrationTest` exercises the **real filter chain and real validation rules** with tokens signed by a **locally generated RSA key** (`SupabaseJwtDecoders.fromPublicKey`).

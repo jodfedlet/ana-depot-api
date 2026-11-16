@@ -33,8 +33,19 @@ public record AnaProperties(
 	public record Limit(@DefaultValue("120") int maxRequests, @DefaultValue("PT1M") Duration window) {
 	}
 
-	/** {@code jwtIssuer}/{@code jwtAudience}: what a Supabase access token must carry. {@code bootstrapAdminSubject}: see docs/auth.md. */
-	public record Security(String jwtIssuer, @DefaultValue("authenticated") String jwtAudience, String bootstrapAdminSubject) {
+	/**
+	 * What a Supabase access token must carry. {@code jwtIssuer}: {@code https://<project-ref>.supabase.co/auth/v1}; when empty it is derived from
+	 * {@code supabaseUrl} (the project URL) + {@code /auth/v1}; when both are empty every token is rejected. {@code jwksUri}: optional override of
+	 * the key-set URL (default {@code <issuer>/.well-known/jwks.json}). {@code bootstrapAdminSubject}: see docs/auth.md.
+	 */
+	public record Security(String supabaseUrl, String jwtIssuer, String jwksUri, @DefaultValue("authenticated") String jwtAudience, String bootstrapAdminSubject) {
+
+		public String effectiveIssuer() {
+			if (jwtIssuer != null && !jwtIssuer.isBlank()) {
+				return jwtIssuer.strip();
+			}
+			return supabaseUrl == null || supabaseUrl.isBlank() ? null : supabaseUrl.strip().replaceAll("/+$", "") + "/auth/v1";
+		}
 	}
 
 	public record Upload(@DefaultValue("PT10M") Duration urlTtl, @DefaultValue("5242880") long maxBytes,

@@ -6,8 +6,10 @@ import java.time.Clock;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@Transactional
 class CategoryRepositoryAdapter implements CategoryRepository {
 
 	private final CategoryJpaRepository categories;
@@ -34,5 +36,31 @@ class CategoryRepositoryAdapter implements CategoryRepository {
 	@Override
 	public Optional<Category> findById(UUID id) {
 		return categories.findById(id).map(CatalogMapper::toDomain);
+	}
+
+	@Override
+	public java.util.List<Category> findActive() {
+		return categories.findByActiveTrueOrderByDisplayOrderAscSlugAsc().stream().map(CatalogMapper::toDomain).toList();
+	}
+
+	@Override
+	public Optional<Category> findActiveBySlug(String slug) {
+		return categories.findBySlugAndActiveTrue(slug).map(CatalogMapper::toDomain);
+	}
+
+	@Override
+	public java.util.Map<UUID, Category> findAllById(java.util.Collection<UUID> ids) {
+		var result = new java.util.HashMap<UUID, Category>();
+		categories.findAllById(ids).forEach(e -> result.put(e.id, CatalogMapper.toDomain(e)));
+		return result;
+	}
+
+	@Override
+	public java.util.Map<UUID, Long> activeProductCounts() {
+		var result = new java.util.HashMap<UUID, Long>();
+		for (var row : categories.activeProductCounts()) {
+			result.put((UUID) row[0], (Long) row[1]);
+		}
+		return result;
 	}
 }

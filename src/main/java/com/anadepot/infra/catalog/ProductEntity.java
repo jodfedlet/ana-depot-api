@@ -45,6 +45,7 @@ class ProductEntity {
 	ProductStatus status;
 	Instant createdAt;
 	Instant updatedAt;
+	String sortName = "";
 	@Version
 	Long version;
 	@OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)

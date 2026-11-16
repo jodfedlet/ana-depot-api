@@ -30,8 +30,11 @@ class SecurityConfig {
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(a -> a
 						.requestMatchers("/actuator/health/**").permitAll()
-						.requestMatchers(HttpMethod.GET, "/api/v1/products/**", "/api/v1/categories/**").permitAll()
-						.requestMatchers("/api/v1/me").hasAuthority(StaffAuthoritiesConverter.AUTHENTICATED)
+						.requestMatchers("/actuator/metrics/**").hasAuthority(StaffAuthoritiesConverter.STAFF)
+						.requestMatchers(HttpMethod.GET, "/api/v1/products/**", "/api/v1/categories/**", "/api/v1/store/**").permitAll()
+						// guests reserve and track WITHOUT an account (a bearer token, if present, links the reservation to that customer)
+						.requestMatchers(HttpMethod.POST, "/api/v1/reservations", "/api/v1/reservations/lookup").permitAll()
+						.requestMatchers("/api/v1/me/**").hasAuthority(StaffAuthoritiesConverter.AUTHENTICATED)
 						.requestMatchers("/api/v1/admin/**").hasAuthority(StaffAuthoritiesConverter.STAFF)
 						.anyRequest().denyAll())
 				.oauth2ResourceServer(o -> o

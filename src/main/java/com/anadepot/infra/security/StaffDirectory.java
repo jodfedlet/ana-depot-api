@@ -31,6 +31,11 @@ public class StaffDirectory {
 	}
 
 	@Transactional
+	public void deactivate(UUID userId) {
+		repository.findById(userId).ifPresent(row -> row.active = false);
+	}
+
+	@Transactional
 	public void grant(UUID userId, UUID grantedBy, String note) {
 		var row = new StaffMemberEntity();
 		row.userId = userId;

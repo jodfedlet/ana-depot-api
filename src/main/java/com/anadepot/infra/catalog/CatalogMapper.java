@@ -119,6 +119,7 @@ final class CatalogMapper {
 		e.unitNote = text(p.unitNote());
 		e.status = p.status();
 		e.updatedAt = p.updatedAt();
+		e.sortName = com.anadepot.core.catalog.model.SearchText.normalize(p.name().in("fr"));
 
 		// prices: matched by currency and updated in place (the database keeps one row per product+currency)
 		var existingPrices = new EnumMap<SupportedCurrency, ProductPriceEntity>(SupportedCurrency.class);

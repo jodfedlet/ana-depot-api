@@ -4,6 +4,7 @@ import com.anadepot.core.catalog.model.AppliedPrice;
 import com.anadepot.core.catalog.model.Category;
 import com.anadepot.core.catalog.model.Product;
 import com.anadepot.core.catalog.model.ProductStatus;
+import com.anadepot.core.shared.Actor;
 import com.anadepot.core.shared.PageRequest;
 import com.anadepot.core.shared.PageResult;
 import com.anadepot.core.shared.money.SupportedCurrency;
@@ -18,9 +19,30 @@ public interface CatalogService {
 	 * attribute value belongs to that category and matches its type/options, the SKU is unique, and an ACTIVE product
 	 * is publishable.
 	 */
-	Product saveProduct(Product product);
+	Product saveProduct(Product product, Actor actor);
 
 	Product getProduct(UUID id);
+
+	/** Public catalog search (active products in active categories only). {@code categorySlug} null = all; an unknown/inactive slug yields an empty page. */
+	PageResult<Product> searchPublic(com.anadepot.core.catalog.model.ProductSearch search, String categorySlug, PageRequest request);
+
+	/** One ACTIVE product by id (UUID text) or slug; draft/inactive/unknown/in an inactive category => NotFoundException. */
+	Product getPublicProduct(String idOrSlug);
+
+	java.util.List<Category> listPublicCategories();
+
+	Category getPublicCategory(String slug);
+
+	/** Active product count per category id. */
+	java.util.Map<UUID, Long> publicProductCounts();
+
+	java.util.Map<UUID, Category> categoriesById(java.util.Collection<UUID> ids);
+
+	/**
+	 * Rebuilds the search index of EVERY product from the current catalog (repair/backfill). Idempotent; audited; one transaction per page.
+	 * @return number of products indexed
+	 */
+	int reindexSearch(Actor actor);
 
 	PageResult<Product> listProducts(PageRequest request, ProductStatus statusOrNull);
 

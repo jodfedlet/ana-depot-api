@@ -71,6 +71,13 @@ public final class Product {
 		return new Product(id, sku, slug, categoryId, name, description, brand, unit, unitNote, next, pricing, variants, attributes, images, createdAt, now);
 	}
 
+	/** Same product with one more image appended after the existing ones (position = next free). */
+	public Product withImage(ProductImage image, Instant now) {
+		var all = new java.util.ArrayList<>(images);
+		all.add(image);
+		return new Product(id, sku, slug, categoryId, name, description, brand, unit, unitNote, status, pricing, variants, attributes, all, createdAt, now);
+	}
+
 	/**
 	 * What a customer-facing (ACTIVE) product needs: SKU, an active price, at least one active variant when it has
 	 * variants, and every attribute the category marks as required.

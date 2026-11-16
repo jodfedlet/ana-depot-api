@@ -23,12 +23,12 @@ public record ProductPrice(SupportedCurrency currency, Money retail, Money sale,
 		boolean wholesaleEnabled, List<WholesaleTier> tiers, boolean active) {
 
 	public ProductPrice {
-		requireCurrency(retail);
+		requireCurrency(currency, retail);
 		if (!retail.isPositive()) {
 			throw new DomainRuleViolation("retail_price_invalid", "Retail price must be greater than zero (" + currency + ")");
 		}
 		if (sale != null) {
-			requireCurrency(sale);
+			requireCurrency(currency, sale);
 			if (!sale.isPositive() || !sale.isLessThan(retail)) {
 				throw new DomainRuleViolation("sale_price_invalid", "Sale price must be greater than zero and lower than the retail price (" + currency + ")");
 			}
@@ -48,7 +48,7 @@ public record ProductPrice(SupportedCurrency currency, Money retail, Money sale,
 			}
 			WholesaleTier previous = null;
 			for (var t : tiers) {
-				requireCurrency(t.unitPrice());
+				requireCurrency(currency, t.unitPrice());
 				if (t.minQuantity() < 2) {
 					throw new DomainRuleViolation("tier_quantity_invalid", "A wholesale tier starts at 2 units or more");
 				}
@@ -71,10 +71,14 @@ public record ProductPrice(SupportedCurrency currency, Money retail, Money sale,
 		}
 	}
 
-	private void requireCurrency(Money m) {
+	private static void requireCurrency(SupportedCurrency currency, Money m) {
 		if (m.currency() != currency) {
 			throw new com.anadepot.core.shared.money.CurrencyMismatchException(currency, m.currency());
 		}
+	}
+
+	private void requireCurrency(Money m) {
+		requireCurrency(currency, m);
 	}
 
 	/** Unit price before any wholesale tier: the sale price if there is one, else retail. */

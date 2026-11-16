@@ -13,6 +13,7 @@ import com.anadepot.core.reservation.model.RejectReason;
 import com.anadepot.core.reservation.model.Reservation;
 import com.anadepot.core.reservation.model.ReservationLine;
 import com.anadepot.core.reservation.model.ReservationStatus;
+import com.anadepot.core.reservation.repository.PickupSnapshotProvider;
 import com.anadepot.core.reservation.repository.ReservationRepository;
 import com.anadepot.core.reservation.service.ReservationService;
 import com.anadepot.core.reservation.service.SubmitReservationCommand;
@@ -59,11 +60,13 @@ public class ReservationServiceImpl implements ReservationService {
 	private final IdempotencyService idempotency;
 	private final TransactionBoundary tx;
 	private final Clock clock;
+	private final PickupSnapshotProvider pickup;
 	private final SecureRandom random = new SecureRandom();
 
 	public ReservationServiceImpl(ReservationRepository reservations, InventoryRepository inventory, CatalogService catalog,
 			CustomerRepository customers, AuditRecorder audit, DomainEventRecorder events, OperationMetrics metrics,
-			IdempotencyService idempotency, TransactionBoundary tx, Clock clock) {
+			IdempotencyService idempotency, TransactionBoundary tx, Clock clock, PickupSnapshotProvider pickup) {
+		this.pickup = pickup;
 		this.reservations = reservations;
 		this.inventory = inventory;
 		this.catalog = catalog;
@@ -83,13 +86,15 @@ public class ReservationServiceImpl implements ReservationService {
 		if (cmd.lines() == null || cmd.lines().isEmpty()) {
 			throw new DomainRuleViolation("cart_empty", "A reservation needs at least one line");
 		}
-		var fingerprint = Fingerprint.of(cmd.lines(), cmd.contact(), cmd.locale(), cmd.pickupSnapshotJson());
+		var fingerprint = Fingerprint.of(cmd.lines(), cmd.contact(), cmd.locale());
 		return idempotency.run(cmd.idempotencyKey(), scope(cmd.actor()), "reservation.submit", fingerprint,
 				() -> tx.inTransaction(() -> doSubmit(cmd).id()), this::get);
 	}
 
 	private Reservation doSubmit(SubmitReservationCommand cmd) {
 		var now = clock.instant();
+		// Pickup must be available; the CURRENT settings are frozen on the reservation. A caller-supplied snapshot (tests only) wins.
+		var pickupSnapshot = cmd.pickupSnapshotJson() != null ? cmd.pickupSnapshotJson() : pickup.currentSnapshotJson();
 		var lines = new ArrayList<ReservationLine>();
 		var seen = new HashSet<String>();
 		var needed = new TreeMap<ItemKey, Integer>();
@@ -114,7 +119,7 @@ public class ReservationServiceImpl implements ReservationService {
 		var customer = customers.findByPhone(contact.dialCode(), Customer.normalizePhone(contact.phone()))
 				.orElseGet(() -> customers.save(new Customer(UUID.randomUUID(), contact.firstName(), contact.lastName(), contact.dialCode(),
 						Customer.normalizePhone(contact.phone()), contact.email(), cmd.actor() == null ? null : cmd.actor().userId(), now)));
-		var reservation = reservations.save(Reservation.submit(UUID.randomUUID(), newReference(), cmd.locale(), contact, customer.id(), lines, cmd.pickupSnapshotJson(), now));
+		var reservation = reservations.save(Reservation.submit(UUID.randomUUID(), newReference(), cmd.locale(), contact, customer.id(), lines, pickupSnapshot, now));
 		record(reservation, "reservation.submitted", "RESERVATION_SUBMITTED", cmd.actor() == null ? Actor.guest() : cmd.actor(), null, null);
 		return reservation;
 	}

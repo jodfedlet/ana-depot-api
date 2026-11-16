@@ -19,6 +19,9 @@ public interface InventoryRepository {
 	 */
 	Optional<InventoryItem> findForUpdate(UUID productId, UUID variantId);
 
+	/** Every stock position of the given products (product-level and variant-level) in one query. */
+	java.util.Map<UUID, List<InventoryItem>> findAllForProducts(java.util.Collection<UUID> productIds);
+
 	StockMovement saveMovement(StockMovement movement);
 
 	List<StockMovement> movements(UUID inventoryItemId);

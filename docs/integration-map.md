@@ -96,15 +96,18 @@ The frontend today (`ana-depot-web`): real Supabase Auth (cookie session, `GET /
 9. Frontend category `moveUp/moveDown` ordering ⇒ `display_order` exists; a reorder endpoint is a trivial admin write.
 
 ## 7. Progress notes (for resuming; update as work packages finish)
-Migration numbering used: V6 store_settings, V7 catalog_search, V8 catalog_fulltext_search, V9 customer accounts (WP4), V10 Data-API lockdown (must stay LAST so it covers every table).
+Migration numbering used: V6 store_settings, V7 catalog_search, V8 catalog_fulltext_search, V9 customer accounts, V10 product image object key, V11 Data-API lockdown (numbered LAST so it covers every table).
 | WP | State |
 |---|---|
 | 0 integration map | done (this file) |
 | 1 pickup settings | done + tested (`PickupSettingsApiIntegrationTest`, 8 tests): V6, core settings use case, `GET /store/pickup`, `GET/PUT /admin/settings/pickup`, reservation gate + snapshot |
-| 2 public catalog | DONE + tested: `GET /categories`, `/categories/{slug}`, `/products` (browse/filter), `/products/search` (same use case), `/products/{idOrSlug}`; availability from shared stock; search = PostgreSQL full-text (V8, ADR 0015, docs/search.md); `POST /admin/catalog/search/reindex` |
-| 3 guest reservations | not started |
-| 4 customer accounts | not started |
-| 5-7 tests/docs | partially (docs/api.md still describes Phase 1) |
-| Addendum A Supabase Postgres config + V9 lockdown | not started |
-| Addendum B Cloudflare R2 adapter + image endpoints | not started |
-| Addendum C docs correction (Supabase Storage -> R2) | not started |
+| 2 public catalog | done + tested: `GET /categories`, `/categories/{slug}`, `/products` (browse/filter), `/products/search` (same use case), `/products/{idOrSlug}`; availability from shared stock; search = PostgreSQL full-text (V8, ADR 0015, docs/search.md); `POST /admin/catalog/search/reindex` |
+| 3 guest reservations | done + tested: `POST /reservations` (Idempotency-Key required, server-side prices, per-currency totals, pickup snapshot), `POST /reservations/lookup` (identical 404s, two throttles), customer-safe view; `GuestReservationApiIntegrationTest` (14), `ReservationLookupApiIntegrationTest`, `ReservationRateLimitIntegrationTest` |
+| 4 customer accounts | done + tested: V9 (guests unique per phone, registered separate, no auto-merge), `GET/PUT /me/profile`, `GET /me/reservations[/{id}]`, bearer token on `POST /reservations` links to the user's own record; `AccountApiIntegrationTest`, `CustomerAccountsPersistenceIntegrationTest` |
+| 5-7 tests/docs | done: HTTP tests (success, validation, authz, 429, replay/key reuse, enumeration, mixed currency, over-stock, concurrent last units, data leaks); docs/api.md rewritten to the implemented contract |
+| Addendum A Supabase Postgres | done: profiles local/prod/test, `SPRING_DATASOURCE_*`, `SUPABASE_URL`, `SUPABASE_JWKS_URL` (tested), `ProductionConfigGuard`, Hikari per profile, docs/supabase-database.md, V11 lockdown (+ ADR 0013), smoke on the Supabase Postgres image (not the hosted service) |
+| Addendum B Cloudflare R2 | done + tested against MinIO (S3-compatible, NOT real R2): adapter, staff image endpoints (V10), scheduled cleanup, outbox event, docs/storage-r2.md, ADR 0014. **Real-R2 verification PENDING** (opt-in `R2RealIntegrationTest`) |
+| Addendum C docs correction (Supabase Storage -> R2) | done: ADR 0007, README, storage-r2.md, supabase-database.md state that Supabase Storage is deliberately not used |
+
+Remaining differences between the storefront and the API (decisions or work, not hidden): no customer cancel endpoint (policy undecided; `canCancel` is always false); no staff reservation/payment/product/stock management endpoints yet (use cases exist in `core`);
+line snapshots carry no image/slug (the frontend loads the product by id while it is still published); `acknowledgedTerms` is validated but not stored; the public domain for images is not chosen.

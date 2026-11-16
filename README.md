@@ -2,10 +2,11 @@
 
 Backend of **Ana Dépôt** (`ana-depot`): a single-seller retail and wholesale store launching in Haiti, selling in **HTG and USD**.
 Spring Boot 4 · Java 25 · Maven · PostgreSQL · Flyway · Spring Data JPA. Sibling project: [`../ana-depot-web`](../ana-depot-web)
-(Next.js storefront + administration; currently a browser-only demo, **not yet connected** to this API).
+(Next.js storefront + administration; being connected to this API, see [docs/integration-map.md](docs/integration-map.md)).
 
-> **Status: foundation phase.** The domain, schema, core use cases, security boundary and reliability infrastructure are implemented
-> and tested. Only a small REST surface exists (public catalog reads and `/me`). See [Implemented vs designed](#implemented-vs-designed).
+> **Status: Phase 3, backend side.** Public catalog and PostgreSQL full-text search, pickup settings, guest reservations and lookup, customer accounts, staff product images on
+> Cloudflare R2, Supabase Auth verification and Supabase PostgreSQL configuration are implemented and tested. Staff management endpoints for reservations/payments/products/stock are **not** exposed yet
+> (their use cases exist in `core`). See [Implemented vs designed](#implemented-vs-designed) and [docs/api.md](docs/api.md) (exactly what exists).
 
 ## Identity
 Brand **Ana Dépôt**, technical id `ana-depot`. Maven `com.anadepot:ana-depot-api`, Java root package `com.anadepot`.
@@ -46,34 +47,45 @@ Flyway creates the schema on startup (`src/main/resources/db/migration`). Hibern
 
 ## Tests
 ```bash
-mvn test        # 175 tests: unit (pure Java) + Testcontainers/PostgreSQL integration; needs Docker
+mvn test        # 311 tests (7 opt-in/skipped): unit (pure Java) + Testcontainers PostgreSQL + MinIO integration; needs Docker
+mvn package     # jar in target/
 ```
-Highlights: money & per-currency pricing; shared stock; mixed-currency reservations and snapshots; per-currency payments, ledger reversal/adjustment/
-reconciliation; real concurrent transactions (no overselling, duplicate payments); idempotency; outbox delivery/retry/dead-letter/crash recovery/ordering;
-deduplication; rate limiting across instances; presigned-upload verification; database constraints attacked directly; JWT validation; architecture guards.
-**JWT tests use locally generated keys; no test talks to a real Supabase project** ([docs/auth.md](docs/auth.md#testing-honesty)).
+Highlights: money & per-currency pricing; shared stock; mixed-currency reservations over HTTP; real concurrent submissions for the last units across HTG and USD (no overselling); idempotent replay and key reuse;
+enumeration-resistant lookup; customer-view data-leak checks; per-currency payments and ledger; outbox, deduplication, rate limiting across instances; PostgreSQL full-text search (21 + plan + opt-in 20 000-product performance test);
+presigned uploads against MinIO; Data API lockdown (RLS + revoked roles, simulated Supabase roles on plain PostgreSQL); production-configuration guard; architecture guards.
+**Honest limits:** JWT tests use locally generated keys (no test talks to a real Supabase project, [docs/auth.md](docs/auth.md#testing-honesty)); storage tests use **MinIO, an S3-compatible server, not Cloudflare R2**; the real-R2 test
+(`R2_TEST_ENABLED=true mvn test -Dtest=R2RealIntegrationTest`, [docs/storage-r2.md](docs/storage-r2.md)) and the hosted-Supabase checks ([docs/supabase-database.md](docs/supabase-database.md)) are **pending**; the performance test is opt-in (`-Dsearch.perf=true`).
 
 ## Documentation
 | | |
 |---|---|
+| [docs/api.md](docs/api.md) | **the implemented contract**: endpoints, DTOs with JSON examples, errors, headers, idempotency, rate limits |
+| [docs/integration-map.md](docs/integration-map.md) | storefront screens mapped to API calls, gaps, progress notes |
 | [docs/architecture.md](docs/architecture.md) | packages, dependency rules, bounded contexts, diagrams |
 | [docs/domain.md](docs/domain.md) | money, per-currency pricing, inventory, reservations, payments/ledger; mapping to the storefront |
-| [docs/database.md](docs/database.md) | schema, relationships, constraints (DB vs application), migration conventions |
-| [docs/api.md](docs/api.md) | resources, DTOs, errors, pagination, idempotency, concurrency |
+| [docs/database.md](docs/database.md) | schema, migrations V1-V11, constraints (DB vs application), conventions |
+| [docs/search.md](docs/search.md) | PostgreSQL full-text search: design, Creole/French limits, measured performance |
 | [docs/auth.md](docs/auth.md) | Supabase Auth boundary, JWT validation, staff authorization, provisioning, environment |
-| [docs/adr/](docs/adr/) | architecture decision records (ledger, outbox, idempotency, retry, dedup, uploads, rate limiting, concurrency, observability, pricing, auth) |
+| [docs/supabase-database.md](docs/supabase-database.md) | Supabase PostgreSQL: connection mode, TLS, pool, role, Data API lockdown, verification |
+| [docs/storage-r2.md](docs/storage-r2.md) | Cloudflare R2 images: bucket, token, CORS, public domain, tests, checklist |
+| [docs/local-supabase.md](docs/local-supabase.md) | local Supabase stack for development (written by the authentication work) |
+| [docs/adr/](docs/adr/) | decisions: ledger, outbox, delivery, idempotency, retry, dedup, uploads, rate limiting, concurrency, observability, pricing, auth, Supabase Postgres/lockdown (0013), R2 (0014), full-text search (0015) |
 
 ## Implemented vs designed
-| Area | Implemented & tested | Designed / documented only |
+| Area | Implemented & tested | Designed / not exposed yet |
 |---|---|---|
-| Money, currencies | `Money`, `CurrencyTotals`, HTG/USD, cross-currency rejection | conversion policy (deliberately none) |
-| Catalog | categories + attributes, products, variants, per-currency prices/tiers, SKU rules, price-change audit; **REST: public GET products** | admin REST (create/edit/activate), category admin, search/filter endpoints |
-| Inventory | shared stock position, adjust (idempotent, audited), movements, row-lock reservation | REST endpoints, low-stock reporting |
-| Reservations | submit (server-side pricing, stock hold), accept/reject/ready/collect/cancel/expire, snapshots, per-currency totals, history | REST endpoints, guest tracking by reference+phone, customer-facing notes view |
-| Payments | record / reverse / adjust, per-currency settlement, ledger, reconciliation | REST endpoints, payment provider integrations (none) |
-| Reliability | idempotency, outbox + dispatcher, dedup, retry policy, rate limiter, audit trail, correlation ids, JSON logs, metrics | circuit breaker (no external dependency yet), Prometheus registry, dedicated management port |
-| Security | Supabase JWT validation, staff membership table, deny-by-default, `/me`, bootstrap admin | roles/permissions (undecided), admin REST |
-| Uploads | presigned-upload lifecycle (core + persistence) with an in-memory test double | a real storage adapter (Supabase Storage/S3) — default storage **fails closed** |
+| Money, currencies | `Money`, `CurrencyTotals`, HTG/USD, cross-currency rejection | conversion (deliberately none) |
+| Catalog | categories + attributes, products, variants, per-currency prices/tiers, SKU rules, price-change audit; **REST: public categories, products, search with filters/availability** | admin REST (create/edit/activate products, categories, prices) |
+| Search | PostgreSQL full-text (GIN), accents/plurals/prefix, ranking, filters, reindex endpoint | typo tolerance, synonyms, Creole variant table (needs real vocabulary) |
+| Inventory | shared stock position, adjust (idempotent, audited), movements, row-lock reservation | staff stock REST, low-stock reporting |
+| Pickup | settings model + `GET /store/pickup`, staff `GET/PUT /admin/settings/pickup`, snapshot on each reservation | pickup windows/slots, hold period (undecided) |
+| Reservations | **REST: guest submit + lookup**, customer-safe view, account list/detail; accept/reject/ready/collect/cancel/expire use cases | staff reservation REST, customer cancellation (policy undecided), notifications |
+| Accounts | `/me`, `/me/profile`, `/me/reservations`; registered customers separate from guests (V9) | verified-claim process to attach past guest reservations to an account |
+| Payments | record / reverse / adjust, per-currency settlement, ledger, reconciliation (use cases) | REST endpoints, payment providers (none) |
+| Reliability | idempotency, outbox + dispatcher, dedup, retry policy, rate limiter, audit trail, correlation ids, JSON logs, metrics | circuit breaker, Prometheus registry, dedicated management port |
+| Security | Supabase JWT validation (JWKS, optional override), staff membership table, deny-by-default, bootstrap admin | roles/permissions (undecided) |
+| Uploads | `R2ObjectStorage` (Cloudflare R2, S3 API) behind the `ObjectStorage` port; staff image endpoints; scheduled cleanup; tested against MinIO (**not** R2) | real-R2 verification **pending**; Supabase Storage is deliberately not used |
+| Database | Flyway V1-V11, `ddl-auto=validate`, Data API lockdown (RLS + revoked API roles), profiles local/prod | hosted-Supabase verification (manual checklist) |
 | Notifications | outbox events + a logging consumer | SMS/e-mail/WhatsApp (channel undecided) |
 
 ## Known limitations and open decisions

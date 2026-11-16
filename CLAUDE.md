@@ -4,15 +4,16 @@
 
 Spring Boot 4 / Java 25 / Maven / PostgreSQL (Flyway + Spring Data JPA). **Modular monolith, minimal hexagonal architecture.**
 Single-seller retail + wholesale store, launching in Haiti, selling in **HTG and USD**. Brand: Ana Dépôt (`ana-depot`). Sibling
-project: `../ana-depot-web` (Next.js; still browser-only demo — not yet connected to this API).
+project: `../ana-depot-web` (Next.js; being connected to this API: `docs/integration-map.md`).
 
-Read `README.md` first, then `docs/architecture.md`, `docs/domain.md`, `docs/database.md`, `docs/api.md`, `docs/auth.md`, `docs/adr/`.
+Read `README.md` first, then `docs/api.md` (the implemented contract), `docs/architecture.md`, `docs/domain.md`, `docs/database.md`, `docs/auth.md`, `docs/search.md`, `docs/supabase-database.md`, `docs/storage-r2.md`, `docs/adr/`.
 
 ## Commands
 ```bash
 export JAVA_HOME=~/.sdkman/candidates/java/25.0.1-tem   # the pom targets Java 25
-mvn test            # unit + Testcontainers integration tests (needs Docker)
+mvn test            # unit + Testcontainers (PostgreSQL, MinIO) integration tests (needs Docker)
 mvn package         # jar in target/
+SPRING_PROFILES_ACTIVE=local mvn spring-boot:run   # needs SPRING_DATASOURCE_PASSWORD (README); datasource comes from SPRING_DATASOURCE_*
 ```
 
 ## Architecture rules (enforced by `ArchitectureTest`)
@@ -35,6 +36,13 @@ mvn package         # jar in target/
 - Events go through the outbox in the SAME transaction (`DomainEventRecorder`, MANDATORY propagation), delivered at least once.
 - Insert-only entities extend `InsertOnlyEntity` (so Spring Data `save` uses `persist`, never a silently-overwriting `merge`).
 - Authorization = server-side `staff_members` row, never token claims. Deny by default (`SecurityConfig`).
+
+## Phase 3 rules worth knowing
+- Customer endpoints return `CustomerReservationView` only (no internal notes, staff ids, ledger); lookup answers an IDENTICAL 404 for unknown reference / wrong phone. Guests are never merged into accounts (V9).
+- Prices never come from clients. `POST /reservations` requires `Idempotency-Key`.
+- Every new table must `enable row level security` in its own migration (V11 locked the Data API down; `MigrationRlsConventionTest`). The lockdown migration stays numbered after every table-creating migration.
+- Search is PostgreSQL full-text (`ProductSearchNative` is the ONE native-SQL class, justified in ADR 0015). Product images live in Cloudflare R2 (never Supabase Storage); storage tests use MinIO, which is NOT R2.
+- Secrets (`R2_SECRET_ACCESS_KEY`, DB password) come from the environment only and are never logged or returned; `.env` and `dev/supabase/signing_key.json` are never committed.
 
 ## Testing
 Integration tests extend `AbstractIntegrationTest` (one shared PostgreSQL container). Create uniquely named data; do not assert global

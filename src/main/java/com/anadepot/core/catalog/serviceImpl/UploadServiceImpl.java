@@ -10,6 +10,8 @@ import com.anadepot.core.catalog.service.UploadService;
 import com.anadepot.core.shared.Actor;
 import com.anadepot.core.shared.AuditEvent;
 import com.anadepot.core.shared.AuditRecorder;
+import com.anadepot.core.shared.DomainEvent;
+import com.anadepot.core.shared.DomainEventRecorder;
 import com.anadepot.core.shared.DomainRuleViolation;
 import com.anadepot.core.shared.Fingerprint;
 import com.anadepot.core.shared.IdempotencyService;
@@ -31,6 +33,7 @@ public class UploadServiceImpl implements UploadService {
 	private final ProductRepository products;
 	private final ObjectStorage storage;
 	private final AuditRecorder audit;
+	private final DomainEventRecorder events;
 	private final IdempotencyService idempotency;
 	private final TransactionBoundary tx;
 	private final Clock clock;
@@ -40,11 +43,12 @@ public class UploadServiceImpl implements UploadService {
 	private final Duration abandonedAfter;
 
 	public UploadServiceImpl(UploadIntentRepository intents, ProductRepository products, ObjectStorage storage, AuditRecorder audit,
-			IdempotencyService idempotency, TransactionBoundary tx, Clock clock, Duration urlTtl, long maxBytes, List<String> allowedTypes, Duration abandonedAfter) {
+			DomainEventRecorder events, IdempotencyService idempotency, TransactionBoundary tx, Clock clock, Duration urlTtl, long maxBytes, List<String> allowedTypes, Duration abandonedAfter) {
 		this.intents = intents;
 		this.products = products;
 		this.storage = storage;
 		this.audit = audit;
+		this.events = events;
 		this.idempotency = idempotency;
 		this.tx = tx;
 		this.clock = clock;
@@ -86,9 +90,18 @@ public class UploadServiceImpl implements UploadService {
 	 */
 	@Override
 	public UploadIntent completeProductImage(UUID intentId, Actor actor) {
+		return complete(null, intentId, actor);
+	}
+
+	@Override
+	public UploadIntent completeProductImage(UUID productId, UUID intentId, Actor actor) {
+		return complete(productId, intentId, actor);
+	}
+
+	private UploadIntent complete(UUID expectedProductId, UUID intentId, Actor actor) {
 		var pending = tx.inTransaction(() -> {
 			var intent = intents.findById(intentId).orElseThrow(() -> new NotFoundException("Upload", intentId));
-			if (actor == null || !intent.requestedBy().equals(actor.userId())) {
+			if (actor == null || !intent.requestedBy().equals(actor.userId()) || (expectedProductId != null && !intent.productId().equals(expectedProductId))) {
 				throw new NotFoundException("Upload", intentId); // same answer as "does not exist": other people's uploads are not revealed
 			}
 			if (intent.status() == UploadStatus.VERIFIED) {
@@ -120,10 +133,12 @@ public class UploadServiceImpl implements UploadService {
 				return new Verdict(intent, problem);
 			}
 			var product = products.findById(intent.productId()).orElseThrow(() -> new NotFoundException("Product", intent.productId()));
-			var image = new ProductImage(UUID.randomUUID(), storage.publicUrl(intent.objectKey()), LocalizedText.empty(), product.images().size());
+			var image = new ProductImage(UUID.randomUUID(), storage.publicUrl(intent.objectKey()), LocalizedText.empty(), product.images().size(), intent.objectKey());
 			products.save(product.withImage(image, now));
 			var verified = intents.save(intent.with(UploadStatus.VERIFIED, stored.size(), stored.contentType(), now));
 			audit.record(AuditEvent.of("PRODUCT_IMAGE_ADDED", "product", intent.productId(), actor, Map.of(), Map.of("objectKey", intent.objectKey(), "size", stored.size()), null));
+			events.record(new DomainEvent("product.image.uploaded", "product", intent.productId(), now.toEpochMilli(),
+					Map.of("imageId", image.id().toString(), "contentType", stored.contentType(), "size", stored.size())));
 			return new Verdict(verified, null);
 		});
 		if (verdict.problem() != null) {

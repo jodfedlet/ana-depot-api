@@ -22,6 +22,7 @@ class ProductImageEntity {
 	@JoinColumn(name = "product_id")
 	ProductEntity product;
 	String url;
+	String objectKey;
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(columnDefinition = "jsonb")
 	Map<String, String> alt;

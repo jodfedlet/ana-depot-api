@@ -32,6 +32,9 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	private static final Set<String> CONFLICTS = Set.of("insufficient_stock", "invalid_status", "already_paid", "already_reversed", "duplicate_sku",
 			"duplicate_currency_price", "payment_required", "idempotency_conflict", "idempotency_key_reuse", "inventory_exists", "concurrent_update");
 
+	/** A dependency (object storage) is down or not configured: the caller's request was fine, try again later (503). */
+	private static final Set<String> UNAVAILABLE = Set.of("storage_unavailable", "storage_not_configured");
+
 	@ExceptionHandler(NotFoundException.class)
 	ResponseEntity<ProblemDetail> notFound(NotFoundException e) {
 		return problem(HttpStatus.NOT_FOUND, e.code(), e.getMessage());
@@ -69,6 +72,9 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	@ExceptionHandler(DomainRuleViolation.class)
 	ResponseEntity<ProblemDetail> rule(DomainRuleViolation e) {
+		if (UNAVAILABLE.contains(e.code())) {
+			return problem(HttpStatus.SERVICE_UNAVAILABLE, e.code(), e.getMessage());
+		}
 		return problem(CONFLICTS.contains(e.code()) ? HttpStatus.CONFLICT : HttpStatus.UNPROCESSABLE_ENTITY, e.code(), e.getMessage());
 	}
 

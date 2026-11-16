@@ -31,7 +31,7 @@ class StaffBootstrapTest {
 	};
 
 	private StaffBootstrap bootstrap(String subject) {
-		var props = new AnaProperties(null, null, null, new AnaProperties.Security(null, null, null, "authenticated", subject), null);
+		var props = new AnaProperties(null, null, null, new AnaProperties.Security(null, null, null, "authenticated", subject), null, null);
 		return new StaffBootstrap(directory, props, audit, tx);
 	}
 

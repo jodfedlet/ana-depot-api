@@ -9,7 +9,7 @@ class ProductionConfigGuardTest {
 
 	private static AnaProperties props(String supabaseUrl, String issuer, List<String> proxies) {
 		return new AnaProperties(null, null, new AnaProperties.RateLimit(true, proxies, null, null, null),
-				new AnaProperties.Security(supabaseUrl, issuer, null, "authenticated", null), null);
+				new AnaProperties.Security(supabaseUrl, issuer, null, "authenticated", null), null, null);
 	}
 
 	@Test
@@ -26,6 +26,15 @@ class ProductionConfigGuardTest {
 	}
 
 	@Test
+	void aHalfConfiguredR2IsAProblemButNoR2AtAllIsOnlyAWarning() {
+		var half = new AnaProperties(null, null, new AnaProperties.RateLimit(true, List.of("10.0.0.1"), null, null, null), new AnaProperties.Security(null, "https://x/auth/v1", null, "authenticated", null), null,
+				new AnaProperties.Storage(new AnaProperties.R2("acct", "bucket", null, null, null, null, true)));
+		var problems = ProductionConfigGuard.problems("jdbc:postgresql://h/db", "a", "b", half);
+		assertThat(problems).singleElement().asString().contains("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_PUBLIC_BASE_URL").doesNotContain("acct");
+		assertThat(ProductionConfigGuard.warnings("jdbc:postgresql://h:5432/db?sslmode=require", props(null, "https://x/auth/v1", List.of("10.0.0.1")))).singleElement().asString().contains("R2 is not configured");
+	}
+
+	@Test
 	void aNonPostgresUrlIsRefused() {
 		assertThat(ProductionConfigGuard.problems("jdbc:mysql://x/db", "a", "b", props(null, "https://x/auth/v1", null))).singleElement().asString().contains("jdbc:postgresql");
 	}
@@ -33,8 +42,8 @@ class ProductionConfigGuardTest {
 	@Test
 	void warningsPointAtTlsThePoolerAndProxies() {
 		var warnings = ProductionConfigGuard.warnings("jdbc:postgresql://pooler.example:6543/postgres", props(null, "https://x/auth/v1", List.of()));
-		assertThat(warnings).hasSize(3);
-		assertThat(ProductionConfigGuard.warnings("jdbc:postgresql://h:5432/postgres?sslmode=require", props(null, "https://x/auth/v1", List.of("10.0.0.1")))).isEmpty();
-		assertThat(ProductionConfigGuard.warnings("jdbc:postgresql://h:6543/postgres?sslmode=require&prepareThreshold=0", props(null, "https://x/auth/v1", List.of("10.0.0.1")))).isEmpty();
+		assertThat(warnings).hasSize(4);
+		assertThat(ProductionConfigGuard.warnings("jdbc:postgresql://h:5432/postgres?sslmode=require", props(null, "https://x/auth/v1", List.of("10.0.0.1")))).singleElement().asString().contains("R2");
+		assertThat(ProductionConfigGuard.warnings("jdbc:postgresql://h:6543/postgres?sslmode=require&prepareThreshold=0", props(null, "https://x/auth/v1", List.of("10.0.0.1")))).singleElement().asString().contains("R2");
 	}
 }

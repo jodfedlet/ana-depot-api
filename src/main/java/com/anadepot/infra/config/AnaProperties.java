@@ -13,7 +13,8 @@ public record AnaProperties(
 		@DefaultValue Outbox outbox,
 		@DefaultValue RateLimit rateLimit,
 		@DefaultValue Security security,
-		@DefaultValue Upload upload) {
+		@DefaultValue Upload upload,
+		@DefaultValue Storage storage) {
 
 	public record Idempotency(@DefaultValue("P7D") Duration retention, @DefaultValue("PT1H") Duration cleanupInterval) {
 	}
@@ -48,8 +49,71 @@ public record AnaProperties(
 		}
 	}
 
+	/**
+	 * Image upload policy. {@code urlTtl} is how long the presigned PUT URL stays valid (environment {@code R2_PRESIGNED_URL_EXPIRATION_SECONDS}; Cloudflare R2 allows 1 s to 7 days),
+	 * {@code maxBytes} the largest accepted image ({@code R2_MAX_UPLOAD_SIZE_BYTES}). {@code cleanupInterval}: how often abandoned uploads are expired and their objects deleted.
+	 */
 	public record Upload(@DefaultValue("PT10M") Duration urlTtl, @DefaultValue("5242880") long maxBytes,
 			@DefaultValue({"image/jpeg", "image/png", "image/webp"}) List<String> allowedContentTypes,
-			@DefaultValue("PT1H") Duration abandonedAfter) {
+			@DefaultValue("PT1H") Duration abandonedAfter, @DefaultValue("PT15M") Duration cleanupInterval) {
+	}
+
+	public record Storage(@DefaultValue R2 r2) {
+	}
+
+	/**
+	 * Cloudflare R2 (S3-compatible API). Nothing set = object storage is not configured and every storage call fails closed. Only a COMPLETE set creates the
+	 * adapter. {@code endpoint} defaults to {@code https://<accountId>.r2.cloudflarestorage.com}. {@code publicBaseUrl}: the custom domain (or r2.dev during
+	 * development) the bucket is publicly readable from; image URLs are built from it. {@code toString} never prints the secret.
+	 */
+	public record R2(String accountId, String bucketName, String accessKeyId, String secretAccessKey, String endpoint, String publicBaseUrl,
+			@DefaultValue("true") boolean pathStyleAccess) {
+
+		private static boolean blank(String s) {
+			return s == null || s.isBlank();
+		}
+
+		/** Anything set at all? (distinguishes "not used" from "half configured") */
+		public boolean anySet() {
+			return !blank(accountId) || !blank(bucketName) || !blank(accessKeyId) || !blank(secretAccessKey) || !blank(endpoint) || !blank(publicBaseUrl);
+		}
+
+		public String effectiveEndpoint() {
+			if (!blank(endpoint)) {
+				return endpoint.strip().replaceAll("/+$", "");
+			}
+			return blank(accountId) ? null : "https://" + accountId.strip() + ".r2.cloudflarestorage.com";
+		}
+
+		/** Names (environment variables) of what is missing; empty when complete. */
+		public List<String> missing() {
+			var missing = new java.util.ArrayList<String>();
+			if (effectiveEndpoint() == null) {
+				missing.add("R2_ACCOUNT_ID (or R2_ENDPOINT)");
+			}
+			if (blank(bucketName)) {
+				missing.add("R2_BUCKET_NAME");
+			}
+			if (blank(accessKeyId)) {
+				missing.add("R2_ACCESS_KEY_ID");
+			}
+			if (blank(secretAccessKey)) {
+				missing.add("R2_SECRET_ACCESS_KEY");
+			}
+			if (blank(publicBaseUrl)) {
+				missing.add("R2_PUBLIC_BASE_URL");
+			}
+			return missing;
+		}
+
+		public boolean complete() {
+			return missing().isEmpty();
+		}
+
+		@Override
+		public String toString() {
+			return "R2[bucketName=" + bucketName + ", endpoint=" + effectiveEndpoint() + ", accessKeyId=" + (blank(accessKeyId) ? "unset" : "***") + ", secretAccessKey="
+					+ (blank(secretAccessKey) ? "unset" : "***") + ", publicBaseUrl=" + publicBaseUrl + "]";
+		}
 	}
 }

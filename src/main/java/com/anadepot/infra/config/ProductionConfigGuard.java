@@ -56,6 +56,10 @@ class ProductionConfigGuard {
 		if (properties.security().effectiveIssuer() == null) {
 			problems.add("neither SUPABASE_JWT_ISSUER nor SUPABASE_URL is set (every token would be rejected)");
 		}
+		var r2 = properties.storage() == null ? null : properties.storage().r2();
+		if (r2 != null && r2.anySet() && !r2.complete()) {
+			problems.add("Cloudflare R2 is only partly configured, missing " + r2.missing());
+		}
 		return problems;
 	}
 
@@ -66,6 +70,10 @@ class ProductionConfigGuard {
 		}
 		if (url != null && url.contains(":6543") && !url.contains("prepareThreshold=0")) {
 			warnings.add("port 6543 looks like the transaction pooler: add prepareThreshold=0 and run Flyway on a direct or session connection (docs/supabase-database.md)");
+		}
+		var r2 = properties.storage() == null ? null : properties.storage().r2();
+		if (r2 == null || !r2.anySet()) {
+			warnings.add("Cloudflare R2 is not configured: product image uploads are disabled (storage_not_configured)");
 		}
 		if (properties.rateLimit().trustedProxies() == null || properties.rateLimit().trustedProxies().isEmpty()) {
 			warnings.add("ana.rate-limit.trusted-proxies is empty: every client is rate limited by the address of the proxy if the API runs behind one");

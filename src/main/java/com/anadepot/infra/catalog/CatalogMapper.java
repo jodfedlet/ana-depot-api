@@ -52,7 +52,7 @@ final class CatalogMapper {
 			return new ProductVariant(v.id, v.sku, v.active, v.position, axis, overrides);
 		}).toList();
 		var attributes = e.attributeValues.stream().map(a -> new AttributeValue(a.attributeId, a.optionId, a.textValue, a.numberValue)).toList();
-		var images = e.images.stream().map(i -> new ProductImage(i.id, i.url, new LocalizedText(i.alt), i.position)).toList();
+		var images = e.images.stream().map(i -> new ProductImage(i.id, i.url, new LocalizedText(i.alt), i.position, i.objectKey)).toList();
 		return new Product(e.id, e.sku, e.slug, e.categoryId, new LocalizedText(e.name), new LocalizedText(e.description), e.brand, e.sellingUnit,
 				new LocalizedText(e.unitNote), e.status, ProductPricing.of(prices), variants, attributes, images, e.createdAt, e.updatedAt);
 	}
@@ -205,12 +205,16 @@ final class CatalogMapper {
 			a.numberValue = v.number();
 			e.attributeValues.add(a);
 		}
+		// images are matched by id (never deleted and re-inserted): their object key is unique, and an image must keep its row when only the order changes
+		var existingImages = new java.util.HashMap<UUID, ProductImageEntity>();
+		e.images.forEach(x -> existingImages.put(x.id, x));
 		e.images.clear();
 		for (var i : p.images()) {
-			var x = new ProductImageEntity();
+			var x = existingImages.getOrDefault(i.id(), new ProductImageEntity());
 			x.id = i.id();
 			x.product = e;
 			x.url = i.url();
+			x.objectKey = i.objectKey();
 			x.alt = text(i.alt());
 			x.position = i.position();
 			e.images.add(x);

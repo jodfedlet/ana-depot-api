@@ -81,16 +81,16 @@ create role ana_app login password '<generated>' ;
 grant usage, create on schema public to ana_app;     -- PostgreSQL 15+ no longer lets everyone create in public
 -- optional: make the schema owned by it so future migrations never need more
 ```
-* **Owner = runtime role is required.** V10 enables Row Level Security on every table with no policies. The table owner is exempt from RLS, so the application works; a runtime role
+* **Owner = runtime role is required.** V11 enables Row Level Security on every table with no policies. The table owner is exempt from RLS, so the application works; a runtime role
   that is *not* the owner and has no `BYPASSRLS` would see **empty tables**. Supabase's `postgres` has `BYPASSRLS`; `ana_app` works because it owns the tables.
   (Never `FORCE ROW LEVEL SECURITY`: it would lock the owner out too.)
 * Never use `service_role` or the anon/publishable keys for this connection. The API holds **no Supabase API key at all**: it verifies tokens against the public JWKS.
 * With the pooler the username carries the project reference: `ana_app.<project-ref>`.
 
-## 7. Data API lockdown (V10) and how to verify it on a real project
+## 7. Data API lockdown (V11) and how to verify it on a real project
 
 Supabase publishes the `public` schema through PostgREST by default, and gives `anon` and `authenticated` broad privileges on it (and on every table created later). Anyone with the
-project's public key could therefore read or write tables unless Row Level Security or revoked privileges stop them. V10 closes this twice (ADR 0013):
+project's public key could therefore read or write tables unless Row Level Security or revoked privileges stop them. V11 closes this twice (ADR 0013):
 RLS enabled **without policies** on every application table, and `REVOKE ALL` on all tables, sequences and functions of `public` from `anon`, `authenticated` and `service_role`, plus the same for
 **default privileges** (tables created by later migrations start closed). It only touches those roles when they exist, so plain PostgreSQL is unaffected.
 
@@ -120,8 +120,8 @@ Record the date and result in the deployment notes.
 
 | Check | Result |
 |---|---|
-| Flyway V1-V10 + `ddl-auto=validate` + application start on the **Supabase Postgres image** (`public.ecr.aws/supabase/postgres:17.6.1.064`, the image the Supabase CLI uses), throwaway container with its own database | see "Smoke on the Supabase Postgres image" below |
-| V10 on plain PostgreSQL, simulated Supabase roles/default privileges, idempotency | automated: `DataApiLockdownIntegrationTest` (Testcontainers PostgreSQL 17) |
+| Flyway V1-V11 + `ddl-auto=validate` + application start on the **Supabase Postgres image** (`public.ecr.aws/supabase/postgres:17.6.1.064`, the image the Supabase CLI uses), throwaway container with its own database | see "Smoke on the Supabase Postgres image" below |
+| V11 on plain PostgreSQL, simulated Supabase roles/default privileges, idempotency | automated: `DataApiLockdownIntegrationTest` (Testcontainers PostgreSQL 17) |
 | `ProductionConfigGuard`, JWKS override, issuer derivation | automated unit tests |
 | Anything against the **hosted** Supabase service (pooler behavior, TLS chain, Data API exposure, plan limits) | **NOT VERIFIED**: needs a real project; use the checklist above |
 
@@ -131,12 +131,12 @@ local stack, which was stopped and left untouched) and the packaged jar:
 
 | Run | Result |
 |---|---|
-| jar, role `postgres`, database `postgres` (Supabase's real default ACLs: `anon`, `authenticated`, `service_role` have `arwdDxtm` on future tables of `public`) | Flyway applied V1-V10 without error, Hibernate `ddl-auto=validate` passed, `GET /actuator/health` UP, `GET /api/v1/products` empty page, `GET /api/v1/store/pickup` `not_configured` |
+| jar, role `postgres`, database `postgres` (Supabase's real default ACLs: `anon`, `authenticated`, `service_role` have `arwdDxtm` on future tables of `public`) | Flyway applied V1-V11 without error, Hibernate `ddl-auto=validate` passed, `GET /actuator/health` UP, `GET /api/v1/products` empty page, `GET /api/v1/store/pickup` `not_configured` |
 | afterwards, as `postgres` | tables without RLS: **0**; policies: **0**; grants to `anon/authenticated/service_role` on `public` tables: **0**; `set local role anon; select count(*) from products` -> **permission denied for table products**; `select ... for update skip locked` and `select ... for update` run fine |
 | jar, **dedicated role `ana_app`** (owner of its database), profile `prod` (`SUPABASE_URL` set) | start-up OK in 5.8 s, health UP, empty product page, RLS everywhere, 0 API grants; `ProductionConfigGuard` printed its two warnings (no `sslmode` in the URL, no trusted proxies) |
 
 Findings worth knowing:
-* In `pg_default_acl` the entries created **by `supabase_admin`** still grant to `anon`/`authenticated`/`service_role`. V10 revokes the defaults of the role that runs it; it cannot (and must not try to)
+* In `pg_default_acl` the entries created **by `supabase_admin`** still grant to `anon`/`authenticated`/`service_role`. V11 revokes the defaults of the role that runs it; it cannot (and must not try to)
   change another role's defaults. A table created through the dashboard's table editor (as `supabase_admin`) in `public` would start with those grants - it would still have no rows visible if you enable RLS on it,
   and the dashboard's "RLS disabled" warning flags it. Application tables are always created by Flyway as `ana_app`/`postgres`.
 * A fresh database in this image has no Supabase default ACLs, so the default-privilege revocation is exercised only in the `postgres` database run above.

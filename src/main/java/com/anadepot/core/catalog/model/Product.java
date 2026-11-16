@@ -78,6 +78,34 @@ public final class Product {
 		return new Product(id, sku, slug, categoryId, name, description, brand, unit, unitNote, status, pricing, variants, attributes, all, createdAt, now);
 	}
 
+	/** Same product without that image; the remaining images keep their order and are renumbered from 0 (position 0 is the primary image). */
+	public Product withoutImage(UUID imageId, Instant now) {
+		if (images.stream().noneMatch(i -> i.id().equals(imageId))) {
+			throw new com.anadepot.core.shared.NotFoundException("Image", imageId);
+		}
+		var kept = new java.util.ArrayList<ProductImage>();
+		for (var i : images) {
+			if (!i.id().equals(imageId)) {
+				kept.add(i.atPosition(kept.size()));
+			}
+		}
+		return new Product(id, sku, slug, categoryId, name, description, brand, unit, unitNote, status, pricing, variants, attributes, kept, createdAt, now);
+	}
+
+	/** Same product with its images in the given order: {@code orderedIds} must be exactly the current images, each once. */
+	public Product withImageOrder(java.util.List<UUID> orderedIds, Instant now) {
+		var byId = new java.util.HashMap<UUID, ProductImage>();
+		images.forEach(i -> byId.put(i.id(), i));
+		if (orderedIds == null || orderedIds.size() != images.size() || new HashSet<>(orderedIds).size() != orderedIds.size() || !byId.keySet().equals(new HashSet<>(orderedIds))) {
+			throw new DomainRuleViolation("images_order_invalid", "The new order must list every image of the product exactly once");
+		}
+		var sorted = new java.util.ArrayList<ProductImage>();
+		for (var id : orderedIds) {
+			sorted.add(byId.get(id).atPosition(sorted.size()));
+		}
+		return new Product(this.id, sku, slug, categoryId, name, description, brand, unit, unitNote, status, pricing, variants, attributes, sorted, createdAt, now);
+	}
+
 	/**
 	 * What a customer-facing (ACTIVE) product needs: SKU, an active price, at least one active variant when it has
 	 * variants, and every attribute the category marks as required.

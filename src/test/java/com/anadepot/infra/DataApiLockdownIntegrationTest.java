@@ -16,7 +16,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * V10 on PLAIN PostgreSQL (the Testcontainers database has no Supabase roles when Flyway runs it). The Supabase roles are then CREATED here with the
+ * V11 on PLAIN PostgreSQL (the Testcontainers database has no Supabase roles when Flyway runs it). The Supabase roles are then CREATED here with the
  * privileges Supabase grants by default, the migration script is run again (it is idempotent), and PostgreSQL itself is asked what anon / authenticated /
  * service_role can do. This simulates the Supabase role setup; it is NOT a test against a real Supabase database (docs/supabase-database.md has the
  * manual verification for that).
@@ -37,7 +37,7 @@ class DataApiLockdownIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	private static String script() throws IOException {
-		return new ClassPathResource("db/migration/V10__data_api_lockdown.sql").getContentAsString(StandardCharsets.UTF_8);
+		return new ClassPathResource("db/migration/V11__data_api_lockdown.sql").getContentAsString(StandardCharsets.UTF_8);
 	}
 
 	/** What a fresh Supabase project gives its API roles: usage on the schema and ALL on everything (also by default for future objects). */

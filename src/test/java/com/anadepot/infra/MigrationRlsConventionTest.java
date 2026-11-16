@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 /**
- * V10 enabled Row Level Security on the tables that existed then. Every table created by a LATER migration must enable it in the same file, otherwise it would be
+ * V11 enabled Row Level Security on the tables that existed then. Every table created by a LATER migration must enable it in the same file, otherwise it would be
  * the one table of the schema that the Supabase Data API could serve (docs/supabase-database.md, ADR 0013). A convention check on the migration files themselves.
  */
 class MigrationRlsConventionTest {
@@ -25,7 +25,7 @@ class MigrationRlsConventionTest {
 			var name = resource.getFilename();
 			var matcher = VERSION.matcher(name);
 			assertThat(matcher.matches()).as(name).isTrue();
-			if (Integer.parseInt(matcher.group(1)) <= 10) {
+			if (Integer.parseInt(matcher.group(1)) <= 11) {
 				continue;
 			}
 			var sql = resource.getContentAsString(StandardCharsets.UTF_8);
@@ -38,6 +38,6 @@ class MigrationRlsConventionTest {
 				}
 			}
 		}
-		assertThat(missing).as("tables created after V10 without `alter table ... enable row level security`").isEmpty();
+		assertThat(missing).as("tables created after V11 without `alter table ... enable row level security`").isEmpty();
 	}
 }

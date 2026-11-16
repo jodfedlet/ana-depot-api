@@ -77,15 +77,15 @@ class CoreConfig {
 	}
 
 	@Bean
-	@ConditionalOnMissingBean(ObjectStorage.class)
-	ObjectStorage objectStorage() {
-		return new com.anadepot.infra.storage.UnconfiguredObjectStorage();
+	UploadService uploadService(UploadIntentRepository intents, ProductRepository products, ObjectStorage storage, AuditRecorder audit, DomainEventRecorder events,
+			IdempotencyService idempotency, TransactionBoundary tx, Clock clock, AnaProperties properties) {
+		var u = properties.upload();
+		return new UploadServiceImpl(intents, products, storage, audit, events, idempotency, tx, clock, u.urlTtl(), u.maxBytes(), u.allowedContentTypes(), u.abandonedAfter());
 	}
 
 	@Bean
-	UploadService uploadService(UploadIntentRepository intents, ProductRepository products, ObjectStorage storage, AuditRecorder audit,
-			IdempotencyService idempotency, TransactionBoundary tx, Clock clock, AnaProperties properties) {
-		var u = properties.upload();
-		return new UploadServiceImpl(intents, products, storage, audit, idempotency, tx, clock, u.urlTtl(), u.maxBytes(), u.allowedContentTypes(), u.abandonedAfter());
+	com.anadepot.core.catalog.service.ProductImageService productImageService(ProductRepository products, ObjectStorage storage, AuditRecorder audit, DomainEventRecorder events,
+			OperationMetrics metrics, TransactionBoundary tx, Clock clock) {
+		return new com.anadepot.core.catalog.serviceImpl.ProductImageServiceImpl(products, storage, audit, events, metrics, tx, clock);
 	}
 }

@@ -78,3 +78,16 @@ ana:
       "[webhook.receive]": { max-requests: 300, window: PT1M }
   outbox:
     dispatcher-enabled: true
+  upload:
+    url-ttl: ${R2_PRESIGNED_URL_EXPIRATION_SECONDS:600}s        # how long a presigned upload URL is valid (R2: 1 second to 7 days)
+    max-bytes: ${R2_MAX_UPLOAD_SIZE_BYTES:5242880}              # largest accepted image
+    abandoned-after: PT1H
+    cleanup-interval: PT15M
+  storage:
+    r2:                                                          # Cloudflare R2; nothing set = uploads disabled (fail closed). docs/storage-r2.md
+      account-id: ${R2_ACCOUNT_ID:}
+      bucket-name: ${R2_BUCKET_NAME:}
+      access-key-id: ${R2_ACCESS_KEY_ID:}
+      secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+      endpoint: ${R2_ENDPOINT:}                                  # default https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com
+      public-base-url: ${R2_PUBLIC_BASE_URL:}                    # custom domain the bucket is publicly readable from (ADR 0014)

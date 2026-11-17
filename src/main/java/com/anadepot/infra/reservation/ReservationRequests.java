@@ -32,15 +32,30 @@ public final class ReservationRequests {
 	}
 
 	public record ContactRequest(String firstName, String lastName, String dialCode, String phone, String email) {
+		/** Personal data: never printed (a stray log statement or DEBUG logging must not leak it). */
+		@Override
+		public String toString() {
+			return "ContactRequest[redacted]";
+		}
 	}
 
 	public record CreateReservationRequest(List<LineRequest> lines, ContactRequest contact, String locale, Boolean acknowledgedTerms) {
 	}
 
 	public record LookupRequest(String reference, String phone) {
+		/** Personal data: never printed (a stray log statement or DEBUG logging must not leak it). */
+		@Override
+		public String toString() {
+			return "LookupRequest[redacted]";
+		}
 	}
 
 	public record ProfileRequest(String firstName, String lastName, String dialCode, String phone, String email) {
+		/** Personal data: never printed (a stray log statement or DEBUG logging must not leak it). */
+		@Override
+		public String toString() {
+			return "ProfileRequest[redacted]";
+		}
 	}
 
 	/** Validates everything, collecting all issues; returns the domain command only when there are none. */

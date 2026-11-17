@@ -24,6 +24,12 @@ public record CustomerReservationView(UUID id, String reference, String status, 
 		boolean canCancel, List<Event> events) {
 
 	public record Contact(String firstName, String lastName, String dialCode, String phone, String email) {
+
+		/** Personal data: never printed (a stray log statement or DEBUG logging must not leak it). */
+		@Override
+		public String toString() {
+			return "Contact[redacted]";
+		}
 	}
 
 	public record Amount(String currency, String amount) {

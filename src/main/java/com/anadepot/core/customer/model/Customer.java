@@ -20,4 +20,10 @@ public record Customer(UUID id, String firstName, String lastName, String dialCo
 	public static String normalizePhone(String raw) {
 		return raw == null ? "" : raw.replaceAll("\\D", "");
 	}
+
+	/** Personal data: never printed (a stray log statement or DEBUG logging must not leak it). */
+	@Override
+	public String toString() {
+		return "Customer[redacted]";
+	}
 }

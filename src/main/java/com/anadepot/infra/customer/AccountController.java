@@ -27,6 +27,12 @@ class AccountController {
 
 	/** {@code id} is null until the profile has been saved (or a first reservation made while signed in); {@code email} then falls back to the account e-mail. */
 	record ProfileResponse(UUID id, String firstName, String lastName, String dialCode, String phone, String email) {
+
+		/** Personal data: never printed (a stray log statement or DEBUG logging must not leak it). */
+		@Override
+		public String toString() {
+			return "ProfileResponse[redacted]";
+		}
 	}
 
 	private final AccountService accounts;

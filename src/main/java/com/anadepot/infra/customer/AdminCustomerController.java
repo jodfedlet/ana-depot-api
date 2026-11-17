@@ -34,6 +34,12 @@ import org.springframework.web.bind.annotation.RestController;
 class AdminCustomerController {
 
 	record ContactRequest(Long version, String firstName, String lastName, String email) {
+
+		/** Personal data: never printed (a stray log statement or DEBUG logging must not leak it). */
+		@Override
+		public String toString() {
+			return "ContactRequest[redacted]";
+		}
 	}
 
 	record Activity(long reservations, Instant firstReservationAt, Instant lastReservationAt) {
@@ -44,6 +50,12 @@ class AdminCustomerController {
 
 	record Customer(UUID id, String kind, String firstName, String lastName, String dialCode, String phone, String email, boolean hasAccount, Instant createdAt, Instant updatedAt, long version,
 			Activity activity, Summary summary) {
+
+		/** Personal data: never printed (a stray log statement or DEBUG logging must not leak it). */
+		@Override
+		public String toString() {
+			return "Customer[redacted]";
+		}
 	}
 
 	private final CustomerAdminService customers;

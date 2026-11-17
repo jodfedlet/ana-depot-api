@@ -50,4 +50,10 @@ public record Contact(String firstName, String lastName, String dialCode, String
 	private static boolean isBlank(String s) {
 		return s == null || s.isBlank();
 	}
+
+	/** Personal data: never printed (a stray log statement or DEBUG logging must not leak it). */
+	@Override
+	public String toString() {
+		return "Contact[redacted]";
+	}
 }

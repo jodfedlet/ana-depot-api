@@ -33,6 +33,10 @@ interface OutboxJpaRepository extends JpaRepository<OutboxEventEntity, UUID> {
 
 	long countByStatus(String status);
 
+	/** Creation time of the oldest event that is still waiting (PENDING) or in flight (PROCESSING); null when nothing is waiting. Feeds the backlog-age alert. */
+	@Query("select min(e.createdAt) from OutboxEventEntity e where e.status in ('PENDING', 'PROCESSING')")
+	Instant oldestUndelivered();
+
 	List<OutboxEventEntity> findByAggregateIdOrderBySeq(UUID aggregateId);
 
 	@Modifying

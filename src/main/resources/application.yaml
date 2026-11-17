@@ -9,6 +9,11 @@ spring:
       connection-timeout: 5000          # fail fast: a request should not wait on the pool for longer than a user will
       validation-timeout: 3000
       initialization-fail-timeout: 10000 # fail the start-up quickly when the database cannot be reached
+      data-source-properties:            # pgjdbc driver properties: every wait on the network is bounded (docs/operations.md, "Timeouts")
+        connectTimeout: 5                # seconds to open the TCP connection
+        loginTimeout: 10                 # seconds for the whole authentication handshake
+        socketTimeout: 60                # seconds without a reply: a hard backstop ABOVE the 20 s transaction timeout below, so the SQL-level timeout fires first
+        tcpKeepAlive: true
   jpa:
     open-in-view: false                # no lazy loading in the web layer; use cases decide their transactions
     hibernate:
@@ -19,6 +24,11 @@ spring:
         jdbc.time_zone: UTC
   flyway:
     locations: classpath:db/migration
+  transaction:
+    default-timeout: 20s               # every transaction (and so every statement or lock wait inside it) is cancelled by the database after 20 s
+  mvc:
+    async:
+      request-timeout: 30s
   lifecycle:
     timeout-per-shutdown-phase: 30s
   task:
@@ -30,16 +40,34 @@ spring:
 server:
   shutdown: graceful
   forward-headers-strategy: none       # X-Forwarded-* are handled by our own trusted-proxy logic, never blindly
+  tomcat:
+    connection-timeout: 10s            # a client that opens a connection and sends nothing (slowloris) is dropped
+    keep-alive-timeout: 20s
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,metrics
+        include: health,metrics,prometheus     # /actuator/prometheus is NOT public: see docs/operations.md (private management port)
   endpoint:
     health:
       probes:
         enabled: true
+      group:
+        liveness:                              # "the process is alive": never depends on the database (a DB outage must not restart the app)
+          include: livenessState
+        readiness:                             # "send me traffic": the database is required for catalog, reservations and payments
+          include: readinessState,db
+        dependencies:                          # informational, NOT used by load balancers: object storage is optional (uploads only)
+          include: db,storage
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true             # histogram buckets so p95/p99 can be computed (and aggregated across instances) from Prometheus
+      slo:
+        http.server.requests: 100ms,300ms,1s,3s
+    tags:
+      application: ${spring.application.name}
 
 logging:
   structured:
@@ -82,6 +110,16 @@ ana:
       "[admin.write]": { max-requests: 240, window: PT1M }
       "[admin.reindex]": { max-requests: 3, window: PT10M }
       "[webhook.receive]": { max-requests: 300, window: PT1M }
+      "[payment.checkout]": { max-requests: 10, window: PT10M }
+      "[payment.status]": { max-requests: 60, window: PT1M }
+  stripe:                                                       # online payment (docs/payments-stripe.md); OFF unless ANA_STRIPE_ENABLED=true
+    enabled: ${ANA_STRIPE_ENABLED:false}
+    secret-key: ${STRIPE_SECRET_KEY:}                           # backend only; sk_test_ locally, sk_live_ only in production
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}                   # signing secret of the webhook endpoint (whsec_)
+    enabled-currencies: ${ANA_STRIPE_ENABLED_CURRENCIES:}       # e.g. USD; a currency is offered only if Stripe also supports it for the account
+    return-base-url: ${ANA_STRIPE_RETURN_BASE_URL:}             # web origin customers return to (https; http only for localhost)
+    checkout-expiration-minutes: ${ANA_STRIPE_CHECKOUT_EXPIRATION_MINUTES:30}
+    api-base: ${ANA_STRIPE_API_BASE:}                           # only to point a local test double at the SDK; leave empty
   outbox:
     dispatcher-enabled: true
   upload:

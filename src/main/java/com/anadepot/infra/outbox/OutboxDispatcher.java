@@ -59,6 +59,11 @@ public class OutboxDispatcher {
 		this.metrics = metrics;
 		Gauge.builder("anadepot.outbox.pending", repository, r -> r.countByStatus("PENDING")).register(metrics);
 		Gauge.builder("anadepot.outbox.dead", repository, r -> r.countByStatus("DEAD")).register(metrics);
+		// Age of the oldest event not yet delivered: a growing value means the dispatcher (or a handler) is stuck even when no event is DEAD yet.
+		Gauge.builder("anadepot.outbox.oldest.undelivered.age", repository, r -> {
+			var oldest = r.oldestUndelivered();
+			return oldest == null ? 0 : Math.max(0, java.time.Duration.between(oldest, clock.instant()).toMillis() / 1000.0);
+		}).baseUnit("seconds").description("Age in seconds of the oldest outbox event that is not delivered yet (0 when none)").register(metrics);
 	}
 
 	@Scheduled(fixedDelayString = "${ana.outbox.poll-interval:PT2S}")

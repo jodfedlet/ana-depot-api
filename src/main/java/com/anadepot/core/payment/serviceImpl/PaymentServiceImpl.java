@@ -3,6 +3,7 @@ package com.anadepot.core.payment.serviceImpl;
 import com.anadepot.core.payment.model.LedgerEntry;
 import com.anadepot.core.payment.model.LedgerEntryType;
 import com.anadepot.core.payment.model.Payment;
+import com.anadepot.core.payment.model.PaymentMethod;
 import com.anadepot.core.payment.repository.PaymentRepository;
 import com.anadepot.core.payment.service.PaymentService;
 import com.anadepot.core.payment.service.ReconciliationReport;
@@ -62,6 +63,9 @@ public class PaymentServiceImpl implements PaymentService {
 	@Override
 	public Payment record(RecordPaymentCommand cmd) {
 		requireKey(cmd.idempotencyKey());
+		if (cmd.method() == PaymentMethod.STRIPE_CHECKOUT) {
+			throw new DomainRuleViolation("method_not_allowed", "Online payments are recorded only from a verified provider confirmation");
+		}
 		var fingerprint = Fingerprint.of(cmd.reservationId(), cmd.amount(), cmd.method(), cmd.receivedAt(), cmd.reference(), cmd.note());
 		return idempotency.run(cmd.idempotencyKey(), scope(cmd.actor()), "payment.record", fingerprint, () -> tx.inTransaction(() -> {
 			var reservation = lock(cmd.reservationId());
@@ -87,6 +91,24 @@ public class PaymentServiceImpl implements PaymentService {
 	}
 
 	@Override
+	public Payment recordProviderPayment(UUID reservationId, Money amount, String providerReference) {
+		// No idempotency wrapper on purpose: the caller already holds the reservation lock and decides "once" from the attempt's state under that lock
+		// (and the database refuses a second receipt for the same payment); a REQUIRES_NEW idempotency transaction would wait for that very lock.
+		return tx.inTransaction(() -> {
+			var reservation = lock(reservationId);
+			var now = clock.instant();
+			var payment = new Payment(UUID.randomUUID(), reservation.id(), amount, PaymentMethod.STRIPE_CHECKOUT, now, now, null, blankToNull(providerReference), null);
+			reservation.applyLedger(amount);
+			reservations.save(reservation);
+			payments.savePayment(payment);
+			payments.saveLedgerEntry(new LedgerEntry(UUID.randomUUID(), reservation.id(), payment.id(), LedgerEntryType.PAYMENT_RECEIVED, amount, null, null, now, null,
+					correlation.correlationId()));
+			publish(reservation, payment.id(), "payment.recorded", "PAYMENT_RECORDED", Actor.system(), amount, null);
+			return payment;
+		});
+	}
+
+	@Override
 	public Payment reverse(UUID paymentId, String reason, Actor actor, String key) {
 		requireKey(key);
 		if (reason == null || reason.isBlank()) {
@@ -95,6 +117,9 @@ public class PaymentServiceImpl implements PaymentService {
 		var fingerprint = Fingerprint.of(paymentId, reason);
 		return idempotency.run(key, scope(actor), "payment.reverse", fingerprint, () -> tx.inTransaction(() -> {
 			var payment = payments.findPayment(paymentId).orElseThrow(() -> new NotFoundException("Payment", paymentId));
+			if (payment.method() == PaymentMethod.STRIPE_CHECKOUT) {
+				throw new DomainRuleViolation("online_payment_reversal_unsupported", "An online payment cannot be reversed in the ledger: that would not return the money. Refunds need an approved policy.");
+			}
 			var reservation = lock(payment.reservationId());
 			requireReady(reservation);
 			var received = payments.receivedEntryOf(paymentId).orElseThrow(() -> new DomainRuleViolation("ledger_inconsistent", "Payment has no ledger entry"));

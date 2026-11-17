@@ -19,11 +19,11 @@ class FlywayMigrationIntegrationTest extends AbstractIntegrationTest {
 	@Test
 	void allMigrationsAreAppliedInOrderWithoutAnythingPending() {
 		var all = flyway.info().all();
-		assertThat(all).extracting(m -> m.getVersion().getVersion()).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
-		assertThat(all).extracting(m -> m.getDescription()).containsExactly("catalog", "customers and inventory", "reservations", "payments and ledger", "platform", "store settings", "catalog search", "catalog fulltext search", "customer accounts", "product image object key", "data api lockdown", "reservation terms", "customer version");
+		assertThat(all).extracting(m -> m.getVersion().getVersion()).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
+		assertThat(all).extracting(m -> m.getDescription()).containsExactly("catalog", "customers and inventory", "reservations", "payments and ledger", "platform", "store settings", "catalog search", "catalog fulltext search", "customer accounts", "product image object key", "data api lockdown", "reservation terms", "customer version", "online payments");
 		assertThat(Arrays.stream(all).map(m -> m.getState())).containsOnly(MigrationState.SUCCESS);
 		assertThat(flyway.info().pending()).isEmpty();
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("13");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("14");
 	}
 
 	@Test

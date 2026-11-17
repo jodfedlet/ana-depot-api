@@ -31,7 +31,8 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	/** Rule violations that mean "the state of things conflicts with this request" (409) rather than "your input is invalid" (422). */
 	private static final Set<String> CONFLICTS = Set.of("insufficient_stock", "invalid_status", "already_paid", "already_reversed", "duplicate_sku",
 			"duplicate_currency_price", "payment_required", "idempotency_conflict", "idempotency_key_reuse", "inventory_exists", "concurrent_update",
-			"duplicate_slug", "category_has_active_products", "attribute_in_use", "option_in_use", "product_in_use", "variant_axis_in_use", "attribute_type_locked", "attribute_required_violation", "variant_in_use");
+			"duplicate_slug", "category_has_active_products", "attribute_in_use", "option_in_use", "product_in_use", "variant_axis_in_use", "attribute_type_locked", "attribute_required_violation", "variant_in_use",
+			"payment_in_progress", "online_payment_reversal_unsupported");
 
 	/** A dependency (object storage) is down or not configured: the caller's request was fine, try again later (503). */
 	private static final Set<String> UNAVAILABLE = Set.of("storage_unavailable", "storage_not_configured");
@@ -73,6 +74,9 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
 	@ExceptionHandler(DomainRuleViolation.class)
 	ResponseEntity<ProblemDetail> rule(DomainRuleViolation e) {
+		if ("payment_provider_error".equals(e.code())) {
+			return problem(HttpStatus.BAD_GATEWAY, e.code(), e.getMessage());
+		}
 		if (UNAVAILABLE.contains(e.code())) {
 			return problem(HttpStatus.SERVICE_UNAVAILABLE, e.code(), e.getMessage());
 		}

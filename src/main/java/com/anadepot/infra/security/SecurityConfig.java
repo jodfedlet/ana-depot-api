@@ -43,6 +43,9 @@ class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/api/v1/products/**", "/api/v1/categories/**", "/api/v1/store/**").permitAll()
 						// guests reserve and track WITHOUT an account (a bearer token, if present, links the reservation to that customer)
 						.requestMatchers(HttpMethod.POST, "/api/v1/reservations", "/api/v1/reservations/lookup").permitAll()
+						// online payment: same ownership proof as lookup (reference + phone, or the owning customer's token); the webhook authenticates by Stripe's signature
+						.requestMatchers(HttpMethod.POST, "/api/v1/reservations/*/payments/checkout-session", "/api/v1/reservations/*/payments/status").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll()
 						.requestMatchers("/api/v1/me/**").hasAuthority(StaffAuthoritiesConverter.AUTHENTICATED)
 						.requestMatchers("/api/v1/admin/**").hasAuthority(StaffAuthoritiesConverter.STAFF)
 						.anyRequest().denyAll())

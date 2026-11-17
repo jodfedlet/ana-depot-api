@@ -21,5 +21,12 @@ public interface PaymentService {
 	/** Signed correction of what was paid in one currency; reason mandatory. READY_FOR_PICKUP only. */
 	LedgerEntry adjust(UUID reservationId, Money signedAmount, String reason, Actor actor, String idempotencyKey);
 
+	/**
+	 * Posts money the PROVIDER confirmed (verified event): a payment of method STRIPE_CHECKOUT plus its ledger entry. Unlike a
+	 * staff payment it is posted whatever the reservation status or balance is, because the money already moved; the caller flags what needs a human.
+	 * The caller holds the reservation lock and guarantees "once" (see OnlinePaymentService); it runs in the caller's transaction.
+	 */
+	Payment recordProviderPayment(UUID reservationId, Money amount, String providerReference);
+
 	ReconciliationReport reconcile(UUID reservationId);
 }

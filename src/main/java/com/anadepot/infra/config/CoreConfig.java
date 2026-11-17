@@ -110,6 +110,13 @@ class CoreConfig {
 	}
 
 	@Bean
+	com.anadepot.core.payment.service.OnlinePaymentService onlinePaymentService(com.anadepot.core.payment.repository.PaymentAttemptRepository attempts, ReservationRepository reservations,
+			CustomerRepository customers, PaymentService payments, com.anadepot.core.payment.service.CheckoutGateway gateway, IdempotencyService idempotency, OperationMetrics metrics,
+			TransactionBoundary tx, Clock clock) {
+		return new com.anadepot.core.payment.serviceImpl.OnlinePaymentServiceImpl(attempts, reservations, customers, payments, gateway, idempotency, metrics, tx, clock);
+	}
+
+	@Bean
 	com.anadepot.core.settings.service.StoreSettingsService storeSettingsService(com.anadepot.core.settings.repository.PickupSettingsRepository repository, AuditRecorder audit,
 			DomainEventRecorder events, TransactionBoundary tx, Clock clock) {
 		return new com.anadepot.core.settings.serviceImpl.StoreSettingsServiceImpl(repository, audit, events, tx, clock);

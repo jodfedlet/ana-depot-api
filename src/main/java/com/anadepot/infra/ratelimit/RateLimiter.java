@@ -77,7 +77,9 @@ public class RateLimiter {
 			return true;
 		}
 		if (repository.existsByBucketAndWindowStart(bucket, windowStart)) {
-			return false; // row exists and is full
+			// The row may have been created by a concurrent request AFTER our first attempt (it was invisible then), so it is not necessarily full:
+			// count against it once more; only a failed second attempt means the window really is full.
+			return repository.increment(bucket, windowStart, max) == 1;
 		}
 		var row = new RateLimitCounterEntity();
 		row.bucket = bucket;

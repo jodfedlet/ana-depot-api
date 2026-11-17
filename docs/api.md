@@ -10,6 +10,7 @@ DTOs are separate from JPA entities and from domain objects. Search specifics: [
 * Enum values are upper case (`PENDING_REVIEW`, `IN_STOCK`, ...), except the public pickup `status` (`available | disabled | not_configured`).
 * Authentication: `Authorization: Bearer <Supabase access token>` ([auth.md](auth.md)). Authorization is decided on the server: `/api/v1/admin/**` needs a **staff** row in `staff_members`; `/api/v1/me/**` any valid token; the rest of the table below is public.
   **A bearer token that is present but invalid or expired is a 401 even on a public endpoint** (it is never silently treated as a guest): send the header only when the user is signed in and the token is fresh.
+* **Browsers** may call the API directly only from the origins listed in `ANA_CORS_ALLOWED_ORIGINS` (comma-separated exact origins, no wildcard, no cookies; default: none). Exposed response headers: `X-Correlation-Id`, `Retry-After`; accepted request headers: `Authorization`, `Content-Type`, `Accept`, `Idempotency-Key`, `X-Correlation-Id`.
 * Every response carries `X-Correlation-Id` (echo of a well-formed request header, else generated).
 
 ### Endpoints
@@ -134,7 +135,7 @@ Request:
 ```
 Validation (422 `validation_failed`, all problems at once): `lines` 1-50 (`cart_empty`, `too_many_lines`); per line `productId` (`required`), `quantity` 1-10 000 (`quantity_invalid`), `currency` `HTG|USD` (`required`, `currency_invalid`);
 `contact.firstName/lastName` required, max 100; `contact.dialCode` 1-4 digits with optional `+` (stored as `+<digits>`); `contact.phone` 6-15 digits, spaces and `()-./+` allowed; `email` optional and well formed;
-`locale` `fr|ht`; `acknowledgedTerms` must be `true` (`terms_not_acknowledged`; it is validated, **not stored**: no legal text version exists yet). The same product may appear once per currency and shares one stock position.
+`locale` `fr|ht`; `acknowledgedTerms` must be `true` (`terms_not_acknowledged`; the server stores the acknowledgement time and the version label configured in `ANA_TERMS_VERSION`, never a value sent by the client; the version is not exposed by any public endpoint yet). The same product may appear once per currency and shares one stock position.
 Rules from the use case: every line priced from the catalog in its currency (retail, sale or the wholesale tier for that quantity), the product must be active and sold in that currency (`product_unavailable`, `price_not_available`), minimum order (`below_minimum_order`),
 variants (`variant_required`, `variant_unavailable`), pickup available, stock reserved under row locks in a stable order: not enough -> **409 `insufficient_stock`** and nothing is reserved. Unknown product -> 404 `not_found`.
 

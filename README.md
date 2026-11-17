@@ -43,6 +43,7 @@ Flyway creates the schema on startup (`src/main/resources/db/migration`). Hibern
 | `SUPABASE_JWKS_URL` | optional override of `<issuer>/.well-known/jwks.json` (private network, proxy, local stack) |
 | `SUPABASE_JWT_AUDIENCE` | default `authenticated` |
 | `ANA_BOOTSTRAP_ADMIN_SUBJECT` | Supabase user id (UUID) of the first store administrator; one-time ([docs/auth.md](docs/auth.md)) |
+| `ANA_CORS_ALLOWED_ORIGINS` | comma-separated exact origins of the storefront allowed to call the API from a browser (e.g. `https://www.example.com`); empty = none; wildcards refuse to start |
 | `ana.*` (application.yaml) | idempotency retention, outbox batch/backoff/attempts, rate limits per operation, trusted proxies, upload TTL/size/types |
 
 ## Tests

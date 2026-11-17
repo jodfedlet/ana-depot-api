@@ -49,6 +49,12 @@ class CoreConfig {
 	}
 
 	@Bean
+	com.anadepot.core.catalog.service.CategoryAdminService categoryAdminService(CategoryRepository categories, ProductRepository products, CatalogService catalog, AuditRecorder audit,
+			IdempotencyService idempotency, TransactionBoundary tx, Clock clock) {
+		return new com.anadepot.core.catalog.serviceImpl.CategoryAdminServiceImpl(categories, products, catalog, audit, idempotency, tx, clock);
+	}
+
+	@Bean
 	InventoryService inventoryService(InventoryRepository inventory, TransactionBoundary tx, Clock clock, AuditRecorder audit, DomainEventRecorder events, IdempotencyService idempotency) {
 		return new InventoryServiceImpl(inventory, tx, clock, audit, events, idempotency);
 	}

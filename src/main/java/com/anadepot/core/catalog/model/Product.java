@@ -71,6 +71,11 @@ public final class Product {
 		return new Product(id, sku, slug, categoryId, name, description, brand, unit, unitNote, next, pricing, variants, attributes, images, createdAt, now);
 	}
 
+	/** The same product in another category (the caller re-validates it against that category: attribute values and variant axes must exist there). */
+	public Product withCategory(UUID newCategoryId, Instant now) {
+		return new Product(id, sku, slug, newCategoryId, name, description, brand, unit, unitNote, status, pricing, variants, attributes, images, createdAt, now);
+	}
+
 	/** Same product with one more image appended after the existing ones (position = next free). */
 	public Product withImage(ProductImage image, Instant now) {
 		var all = new java.util.ArrayList<>(images);

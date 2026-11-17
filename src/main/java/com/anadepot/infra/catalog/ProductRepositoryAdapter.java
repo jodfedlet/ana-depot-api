@@ -55,6 +55,13 @@ class ProductRepositoryAdapter implements ProductRepository {
 	}
 
 	@Override
+	public PageResult<Product> findPageByCategory(UUID categoryId, PageRequest request) {
+		var pageable = org.springframework.data.domain.PageRequest.of(request.page(), request.size(), Sort.by("createdAt").descending().and(Sort.by("id")));
+		var page = products.findByCategoryId(categoryId, pageable);
+		return new PageResult<>(page.getContent().stream().map(CatalogMapper::toDomain).toList(), request.page(), request.size(), page.getTotalElements());
+	}
+
+	@Override
 	public Optional<Product> findBySlug(String slug) {
 		return products.findBySlug(slug).map(CatalogMapper::toDomain);
 	}

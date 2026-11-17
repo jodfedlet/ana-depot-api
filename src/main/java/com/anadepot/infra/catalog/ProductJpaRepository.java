@@ -14,6 +14,8 @@ interface ProductJpaRepository extends JpaRepository<ProductEntity, UUID> {
 	@org.springframework.data.jpa.repository.Query("select p.id from ProductEntity p where p.categoryId = :categoryId")
 	java.util.List<UUID> idsByCategory(UUID categoryId);
 
+	Page<ProductEntity> findByCategoryId(UUID categoryId, Pageable pageable);
+
 	Page<ProductEntity> findByStatus(ProductStatus status, Pageable pageable);
 
 	boolean existsBySku(String sku);

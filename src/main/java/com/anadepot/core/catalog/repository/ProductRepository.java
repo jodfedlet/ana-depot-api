@@ -24,6 +24,9 @@ public interface ProductRepository {
 
 	List<UUID> idsByCategory(UUID categoryId);
 
+	/** Products of one category in every status, newest first. */
+	PageResult<Product> findPageByCategory(UUID categoryId, PageRequest request);
+
 	/** Public catalog search: ONLY active products in active categories; see {@link ProductSearch}. */
 	PageResult<Product> searchPublic(ProductSearch search, PageRequest request);
 }

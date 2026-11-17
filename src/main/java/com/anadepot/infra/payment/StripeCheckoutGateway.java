@@ -165,6 +165,8 @@ class StripeCheckoutGateway implements CheckoutGateway {
 		var params = SessionCreateParams.builder()
 				.setMode(SessionCreateParams.Mode.PAYMENT)
 				.setUiMode(SessionCreateParams.UiMode.HOSTED_PAGE)
+				// Stripe's Adaptive Pricing would show/charge the customer in THEIR currency: an automatic conversion, which this business never does
+				.setAdaptivePricing(SessionCreateParams.AdaptivePricing.builder().setEnabled(false).build())
 				.setSuccessUrl(base + "/" + locale + "/payment/return?reference=" + enc + "&attempt=" + r.attemptId())
 				.setCancelUrl(base + "/" + locale + "/payment/cancelled?reference=" + enc)
 				.setClientReferenceId(r.attemptId().toString())

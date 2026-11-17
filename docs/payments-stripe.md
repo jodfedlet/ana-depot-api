@@ -1,14 +1,15 @@
 # Online payment with Stripe Checkout (design and API contract)
 
 Stripe-hosted Checkout Sessions, confirmed ONLY by signed webhooks, posted into the EXISTING payment ledger. Cash at pickup is unchanged. Stripe is optional and independently disableable.
-Status of this document: contract agreed before implementation; sections marked **(implemented)** are verified by tests listed in the final report.
+Status: implemented (migration V14, `ana.stripe.*`). See "What was verified" at the end.
 
 ## Findings that shape the design
 
 1. **Payments exist only while a reservation is `READY_FOR_PICKUP`** (`PaymentServiceImpl.requireReady`; staff review comes first and stock is held). The brief's flow "submit, then pay online immediately" conflicts with that rule, and the brief forbids changing the lifecycle.
    So online payment is offered **when the reservation is READY_FOR_PICKUP** (customer tracking page, confirmation page once ready). At submission the customer only chooses/acknowledges *pay at pickup*, and is told online payment becomes available once the store marks the reservation ready.
    **Business decision needed:** allow prepayment earlier (for example while CONFIRMED)? Not implemented.
-2. **HTG is not in Stripe's published supported-currency list** (docs.stripe.com/currencies, read 2026-11-17), so HTG presentment is not expected to be available. USD is. Eligibility is therefore **checked per currency, per merchant account, at runtime** and defaults to disabled: a currency is offered only if it is in `ANA_STRIPE_ENABLED_CURRENCIES` AND Stripe reports it in `country_specs/{account country}.supported_payment_currencies` for the connected account. No fallback to another currency, no conversion.
+2. **Currency eligibility is a runtime check, never an assumption.** Stripe's public currency page (read 2026-11-17) did not show HTG in the text I could search, yet a Stripe TEST-mode account (country BR, not Ana Dépôt's merchant account) listed both `htg` and `usd` in `country_specs/BR.supported_payment_currencies` and accepted a test-mode Checkout Session in each. That proves nothing about the real merchant account, its country, its capabilities or what settles. So a currency is offered only if it is in `ANA_STRIPE_ENABLED_CURRENCIES` AND the connected account's country spec lists it; if Stripe cannot be asked, nothing is offered. No fallback currency, no conversion. Settlement into the account's own payout currency is Stripe's business with the merchant and happens outside this application; **the owner must confirm in the Stripe Dashboard what HTG charges settle into and at what cost.**
+   **Adaptive Pricing** (Stripe converting the displayed/charged price into the customer's local currency) was ON by default in test mode. Every session is therefore created with `adaptive_pricing[enabled]=false`, so the customer is charged exactly the reservation's currency and amount (verified against test-mode Stripe: the session came back with `adaptive_pricing.enabled=false`).
 3. Amount charged = the **full current due of that currency**, calculated by the backend. Partial payment is not supported (no approved policy); overpayment is not created by this feature.
 4. Money truth: a verified provider payment is ALWAYS posted to the ledger, even if the reservation moved (cancelled) or the balance was settled meanwhile (cash recorded during checkout). Such attempts are flagged `requiresAttention` for staff; nothing is refunded automatically and no refund policy is invented.
 
@@ -79,3 +80,26 @@ Failures to process return `500` so Stripe retries; Stripe's retries and duplica
 ## Not in scope / open
 
 Refunds and their policy · prepayment before READY_FOR_PICKUP · partial online payment · MonCash/NatCash · Stripe Dashboard branding (configured in the Dashboard, see the operations notes) · live-mode activation.
+
+## What was verified (and what was not)
+
+| Level | What | Result |
+|---|---|---|
+| MOCKED provider, real PostgreSQL, real security chain, real signature check | `OnlinePaymentIntegrationTest` (22), `StripeGatewayConfigTest` | pass: amount from the ledger, currency eligibility, disabled Stripe, ownership/404, idempotency (same key other currency -> 409), duplicate/out-of-order/async/expired/mismatched events, mixed HTG+USD, cash-then-Stripe flagged, concurrency (8 parallel duplicate deliveries -> 1 payment; 6 parallel checkouts -> 1 attempt), reconciliation |
+| LOCAL FAKE Stripe (`dev/fake-stripe.mjs`) + real API + real browser | web `e2e/storefront/stripe-real.mjs` (see the web repo) | pass; proves our integration against the double only |
+| Stripe TEST-mode API (read-only/expirable calls through the Stripe CLI, account is NOT Ana Dépôt's) | currency listing, session creation in USD and HTG, `adaptive_pricing=false` accepted | done by hand; the application itself was NOT run against test-mode Stripe and real webhook deliveries were NOT exercised |
+| Stripe LIVE | nothing | not done, not authorised |
+
+Run the local fake stack: `node dev/fake-stripe.mjs` (set `FAKE_STRIPE_WEBHOOK_URL`/`FAKE_STRIPE_WEBHOOK_SECRET`), then start the API with `ANA_STRIPE_ENABLED=true STRIPE_SECRET_KEY=sk_test_fake STRIPE_WEBHOOK_SECRET=<same> ANA_STRIPE_ENABLED_CURRENCIES=USD ANA_STRIPE_RETURN_BASE_URL=http://127.0.0.1:3105 ANA_STRIPE_API_BASE=http://127.0.0.1:9199`.
+
+## Stripe Dashboard configuration required (not done here)
+
+1. Use TEST keys first; keep test and live keys apart (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` come from the environment only).
+2. Developers > Webhooks > add endpoint `https://<api-host>/api/v1/webhooks/stripe`, subscribe to exactly: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `payment_intent.succeeded`, `payment_intent.payment_failed`. Copy the signing secret. Local testing: `stripe listen --forward-to localhost:8080/api/v1/webhooks/stripe` prints the matching `whsec_`.
+3. Settings > Branding: business name, logo, brand colour (Checkout takes them from here; the application does not invent a legal name, address or logo).
+4. Confirm the account country, the payout/settlement currency, that HTG (and USD) can really be charged, per-transaction minimums and fees, and the payment methods you want (cards only unless you enable more; delayed methods are handled).
+5. Do not enable Adaptive Pricing for this integration's sessions (the application disables it per session).
+
+## Refunds and unresolved decisions
+
+No refund exists: there is no approved refund policy, so there is no refund endpoint and no refund button. A ledger reversal of a Stripe payment is refused because it would not return money. Open: refund policy, prepayment before READY_FOR_PICKUP, partial online payment, overpayment policy, what a customer sees when the store cancels a reservation that was paid online (the payment stays on the ledger and the attempt is flagged for a human).

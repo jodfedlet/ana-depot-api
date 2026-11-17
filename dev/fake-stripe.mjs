@@ -69,6 +69,7 @@ http.createServer(async (req, res) => {
       const form = new URLSearchParams(await readBody(req));
       const idem = req.headers["idempotency-key"];
       if (idem && byIdempotencyKey.has(idem)) return json(res, 200, sessions.get(byIdempotencyKey.get(idem)).api);
+      if (form.get("adaptive_pricing[enabled]") !== "false") return json(res, 400, { error: { type: "invalid_request_error", code: "adaptive_pricing_not_disabled", message: "Ana Dépôt requires adaptive_pricing[enabled]=false (no automatic currency conversion)" } });
       const currency = form.get("line_items[0][price_data][currency]");
       const amount = Number(form.get("line_items[0][price_data][unit_amount]"));
       if (!CURRENCIES.includes(currency)) return json(res, 400, { error: { type: "invalid_request_error", code: "currency_not_supported", message: "Invalid currency" } });

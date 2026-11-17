@@ -83,6 +83,11 @@ class CoreConfig {
 	}
 
 	@Bean
+	com.anadepot.core.report.service.ReportService reportService(com.anadepot.core.report.repository.ReportRepository reports, TransactionBoundary tx) {
+		return new com.anadepot.core.report.serviceImpl.ReportServiceImpl(reports, tx);
+	}
+
+	@Bean
 	InventoryService inventoryService(InventoryRepository inventory, TransactionBoundary tx, Clock clock, AuditRecorder audit, DomainEventRecorder events, IdempotencyService idempotency) {
 		return new InventoryServiceImpl(inventory, tx, clock, audit, events, idempotency);
 	}

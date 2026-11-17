@@ -39,11 +39,16 @@ DTOs are separate from JPA entities and from domain objects. Search specifics: [
 | `/api/v1/admin/inventory` ... (6 endpoints) | staff | `admin.write` (writes) | stock positions, adjustments, movements |
 | `/api/v1/admin/reservations` ... (9 endpoints) | staff | `admin.write` (writes) | reservation list, detail, lifecycle, notes |
 | `/api/v1/admin/payments`, `.../reservations/{id}/payments|ledger|payment-adjustments|reconciliation` (8 endpoints) | staff | `admin.write` (writes) | payments, reversals, adjustments, ledger |
+| `GET /api/v1/store/payment-options` | public | `catalog.read` | currencies payable online right now (`online: null` when Stripe is off), see docs/payments-stripe.md |
+| `POST /api/v1/reservations/{reference}/payments/checkout-session` | public (reference + phone, or the owner's token) | `payment.checkout` | opens a Stripe-hosted checkout for ONE currency (`Idempotency-Key` required) |
+| `POST /api/v1/reservations/{reference}/payments/status` | public (same proof) | `payment.status` | real payment state from the database, never from the browser |
+| `POST /api/v1/webhooks/stripe` | Stripe signature | `webhook.receive` | verified Stripe events post money to the ledger |
+| `GET /api/v1/admin/payment-attempts` | staff | - | online payment attempts, `requiresAttention` filter |
 | `/api/v1/admin/customers` ... (3 endpoints) | staff | `admin.write` (PUT) | customers |
 | `/api/v1/admin/reports/*` (6 endpoints) | staff | - | reports |
 
 Default limits (all configurable, `ana.rate-limit.limits.*`): `catalog.read` 300/min, `catalog.search` 60/min, `reservation.submit` 10 per 10 min, `reservation.lookup` 20 per 10 min per client,
-`reservation.lookup.reference` 30 per 10 min per reference, `account.read` 120/min, `account.write` 20 per 10 min, `upload.request` 30/min, `admin.write` 240/min, `admin.reindex` 3 per 10 min. The client key is the user id when a token
+`reservation.lookup.reference` 30 per 10 min per reference, `account.read` 120/min, `account.write` 20 per 10 min, `upload.request` 30/min, `admin.write` 240/min, `admin.reindex` 3 per 10 min, `payment.checkout` 10 per 10 min, `payment.status` 60/min. The client key is the user id when a token
 is present, else the client IP (`X-Forwarded-For` is trusted only from `ana.rate-limit.trusted-proxies`).
 
 ## Errors (RFC 9457 `application/problem+json`)
@@ -270,7 +275,11 @@ Movement: `{ id, inventoryItemId, type INITIAL\|ADD\|REDUCE\|RECOUNT\|SALE, delt
 notes[{id,visibility,body,at,author}], allowedActions[ACCEPT|REJECT|MARK_READY|COLLECT|CANCEL|ADD_NOTE] }`. Transitions run in one transaction (lock, stock, audit, outbox) and accept an optional `Idempotency-Key`; a transition not allowed from the current status is 409 `invalid_status`. Internal notes never reach customers;
 customer-visible ones appear in the customer's view. Audit: `RESERVATION_ACCEPTED|REJECTED|READY|COLLECTED|CANCELLED`, `RESERVATION_NOTE_ADDED`.
 
-### Payments (cash at pickup)
+### Online payments (Stripe Checkout)
+Contract, lifecycle, webhook events, configuration and what was verified: **docs/payments-stripe.md**. Staff `POST /admin/reservations/{id}/payments` refuses `method=STRIPE_CHECKOUT` (422 `method_not_allowed`);
+reversing a Stripe payment is 409 `online_payment_reversal_unsupported`. New codes: 422 `online_payment_unavailable`, `currency_not_available_online`, `amount_below_minimum`; 409 `payment_in_progress`; 502 `payment_provider_error`. `GET /admin/payments?method=STRIPE_CHECKOUT` lists them (`reference` = PaymentIntent id).
+
+### Payments (cash at pickup, and the ledger for every method)
 | Call | Body / query | Result |
 |---|---|---|
 | `GET /admin/payments` | `page,size,reservationId,currency,method,from,to,reversed,recordedBy` | page of payments (newest received first) |

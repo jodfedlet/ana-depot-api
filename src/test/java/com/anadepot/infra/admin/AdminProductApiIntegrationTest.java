@@ -212,10 +212,12 @@ class AdminProductApiIntegrationTest extends ApiTestSupport {
 			results.add(pool.submit(call));
 		}
 		start.countDown();
+		var codes = new ArrayList<Integer>();
 		int ok = 0;
 		int conflict = 0;
 		for (var f : results) {
 			int code = f.get();
+			codes.add(code);
 			if (code == 200) {
 				ok++;
 			} else if (code == 409) {
@@ -223,8 +225,8 @@ class AdminProductApiIntegrationTest extends ApiTestSupport {
 			}
 		}
 		pool.shutdown();
-		assertThat(ok).isEqualTo(1);
-		assertThat(conflict).isEqualTo(threads - 1);
+		assertThat(ok).as("status codes " + codes).isEqualTo(1);
+		assertThat(conflict).as("status codes " + codes).isEqualTo(threads - 1);
 	}
 
 	@Test

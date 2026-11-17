@@ -174,10 +174,12 @@ class AdminInventoryApiIntegrationTest extends ApiTestSupport {
 			}));
 		}
 		start.countDown();
+		var codes = new ArrayList<Integer>();
 		int ok = 0;
 		int refused = 0;
 		for (var f : results) {
 			int code = f.get();
+			codes.add(code);
 			if (code == 201) {
 				ok++;
 			} else if (code == 422) {
@@ -185,8 +187,8 @@ class AdminInventoryApiIntegrationTest extends ApiTestSupport {
 			}
 		}
 		pool.shutdown();
-		assertThat(ok).isEqualTo(3);                      // 10 units, 3 each: exactly three succeed
-		assertThat(refused).isEqualTo(threads - 3);
+		assertThat(ok).as("status codes " + codes).isEqualTo(3);                      // 10 units, 3 each: exactly three succeed
+		assertThat(refused).as("status codes " + codes).isEqualTo(threads - 3);
 		assertThat(read(id).get("onHand").asInt()).isEqualTo(1);
 	}
 

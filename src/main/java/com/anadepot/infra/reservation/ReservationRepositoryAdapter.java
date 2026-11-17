@@ -12,6 +12,7 @@ import com.anadepot.core.shared.PageRequest;
 import com.anadepot.core.shared.PageResult;
 import com.anadepot.core.shared.money.CurrencyTotals;
 import com.anadepot.core.shared.money.Money;
+import com.anadepot.core.shared.money.SupportedCurrency;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -218,6 +219,35 @@ class ReservationRepositoryAdapter implements ReservationRepository {
 					.forEach(row -> result.put((UUID) row[0], (String) row[1]));
 		}
 		return result;
+	}
+
+	@Override
+	public java.util.Map<UUID, com.anadepot.core.customer.model.CustomerActivity> activityOf(java.util.Collection<UUID> customerIds) {
+		var result = new java.util.HashMap<UUID, com.anadepot.core.customer.model.CustomerActivity>();
+		if (!customerIds.isEmpty()) {
+			em.createQuery("select r.customerId, count(r), min(r.createdAt), max(r.createdAt) from ReservationEntity r where r.customerId in :ids group by r.customerId", Object[].class)
+					.setParameter("ids", customerIds).getResultList()
+					.forEach(row -> result.put((UUID) row[0], new com.anadepot.core.customer.model.CustomerActivity((Long) row[1], (java.time.Instant) row[2], (java.time.Instant) row[3])));
+		}
+		return result;
+	}
+
+	@Override
+	public com.anadepot.core.customer.model.CustomerSummary summaryOf(UUID customerId) {
+		var byStatus = new java.util.EnumMap<com.anadepot.core.reservation.model.ReservationStatus, Long>(com.anadepot.core.reservation.model.ReservationStatus.class);
+		em.createQuery("select r.status, count(r) from ReservationEntity r where r.customerId = :id group by r.status", Object[].class).setParameter("id", customerId).getResultList()
+				.forEach(row -> byStatus.put((com.anadepot.core.reservation.model.ReservationStatus) row[0], (Long) row[1]));
+		var collected = new java.util.EnumMap<SupportedCurrency, Money>(SupportedCurrency.class);
+		em.createQuery("select t.currency, sum(t.totalAmount) from ReservationTotalEntity t where t.reservation.customerId = :id and t.reservation.status = :status group by t.currency", Object[].class)
+				.setParameter("id", customerId).setParameter("status", com.anadepot.core.reservation.model.ReservationStatus.COLLECTED).getResultList()
+				.forEach(row -> collected.put((SupportedCurrency) row[0], Money.of((java.math.BigDecimal) row[1], (SupportedCurrency) row[0])));
+		var open = java.util.List.of(com.anadepot.core.reservation.model.ReservationStatus.PENDING_REVIEW, com.anadepot.core.reservation.model.ReservationStatus.CONFIRMED,
+				com.anadepot.core.reservation.model.ReservationStatus.READY_FOR_PICKUP);
+		var due = new java.util.EnumMap<SupportedCurrency, Money>(SupportedCurrency.class);
+		em.createQuery("select t.currency, sum(case when t.totalAmount > t.paidAmount then t.totalAmount - t.paidAmount else 0 end) from ReservationTotalEntity t "
+				+ "where t.reservation.customerId = :id and t.reservation.status in :open group by t.currency", Object[].class).setParameter("id", customerId).setParameter("open", open).getResultList()
+				.forEach(row -> due.put((SupportedCurrency) row[0], Money.of((java.math.BigDecimal) row[1], (SupportedCurrency) row[0])));
+		return new com.anadepot.core.customer.model.CustomerSummary(byStatus, collected, due);
 	}
 
 	private static String escape(String s) {

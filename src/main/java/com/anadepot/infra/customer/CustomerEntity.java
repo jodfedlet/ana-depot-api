@@ -20,6 +20,8 @@ public class CustomerEntity {
 	UUID authUserId;
 	Instant createdAt;
 	Instant updatedAt;
+	@jakarta.persistence.Version
+	Long version;
 
 	protected CustomerEntity() {
 	}

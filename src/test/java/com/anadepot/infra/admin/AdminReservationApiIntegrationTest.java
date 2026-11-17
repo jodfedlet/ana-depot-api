@@ -182,7 +182,8 @@ class AdminReservationApiIntegrationTest extends ApiTestSupport {
 		assertThat(customerView).contains(visible).doesNotContain(secret);
 		var trail = audits.findByTargetTypeAndTargetIdOrderByOccurredAtAsc("reservation", id);
 		assertThat(trail).extracting(a -> a.getAction()).contains("RESERVATION_NOTE_ADDED");
-		assertThat(trail.toString()).doesNotContain(secret).doesNotContain(visible);
+		var dump = trail.stream().map(a -> a.getPreviousValues() + " " + a.getNewValues() + " " + a.getReason()).collect(java.util.stream.Collectors.joining(" "));
+		assertThat(dump).contains("INTERNAL").doesNotContain(secret).doesNotContain(visible);
 	}
 
 	@Test
@@ -227,10 +228,12 @@ class AdminReservationApiIntegrationTest extends ApiTestSupport {
 			}));
 		}
 		start.countDown();
+		var codes = new ArrayList<Integer>();
 		int ok = 0;
 		int conflict = 0;
 		for (var f : results) {
 			int code = f.get();
+			codes.add(code);
 			if (code == 200) {
 				ok++;
 			} else if (code == 409) {
@@ -238,8 +241,8 @@ class AdminReservationApiIntegrationTest extends ApiTestSupport {
 			}
 		}
 		pool.shutdown();
-		assertThat(ok).isEqualTo(1);
-		assertThat(conflict).isEqualTo(threads - 1);
+		assertThat(ok).as("status codes " + codes).isEqualTo(1);
+		assertThat(conflict).as("status codes " + codes).isEqualTo(threads - 1);
 		var status = read(id).get("status").asString();
 		assertThat(status).isIn("CONFIRMED", "REJECTED");
 		assertThat(available(mattress)).isEqualTo(status.equals("REJECTED") ? 5 : 3);           // stock released exactly when rejected, never twice

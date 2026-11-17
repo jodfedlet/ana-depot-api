@@ -204,10 +204,12 @@ class AdminPaymentApiIntegrationTest extends ApiTestSupport {
 			}));
 		}
 		start.countDown();
+		var codes = new ArrayList<Integer>();
 		int ok = 0;
 		int conflict = 0;
 		for (var f : results) {
 			int code = f.get();
+			codes.add(code);
 			if (code == 201) {
 				ok++;
 			} else if (code == 409) {
@@ -215,8 +217,8 @@ class AdminPaymentApiIntegrationTest extends ApiTestSupport {
 			}
 		}
 		pool.shutdown();
-		assertThat(ok).isEqualTo(3);                      // 10000 + 10000 + 10000 settles 25000; the others see it settled
-		assertThat(conflict).isEqualTo(threads - 3);
+		assertThat(ok).as("status codes " + codes).isEqualTo(3);                      // 10000 + 10000 + 10000 settles 25000; the others see it settled
+		assertThat(conflict).as("status codes " + codes).isEqualTo(threads - 3);
 		var summary = JSON.readTree(get(ADMIN + "/reservations/" + r.id() + "/payments", staffToken).andReturn().getResponse().getContentAsString());
 		assertThat(summary.get("paymentStatus").asString()).isEqualTo("PAID");
 		assertThat(summary.get("payments")).hasSize(3);

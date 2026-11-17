@@ -31,4 +31,10 @@ public interface ReservationRepository {
 
 	/** The reference of each reservation id (unknown ids are absent). */
 	java.util.Map<UUID, String> referencesOf(java.util.Collection<UUID> ids);
+
+	/** Reservation count and first/last reservation time per customer id (customers without reservations are absent). */
+	java.util.Map<UUID, com.anadepot.core.customer.model.CustomerActivity> activityOf(java.util.Collection<UUID> customerIds);
+
+	/** What one customer's reservations add up to, currency by currency (see {@link com.anadepot.core.customer.model.CustomerSummary}). */
+	com.anadepot.core.customer.model.CustomerSummary summaryOf(UUID customerId);
 }

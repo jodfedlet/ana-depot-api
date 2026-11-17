@@ -34,6 +34,29 @@ public record CategoryDraft(String slug, Map<String, String> name, Map<String, S
 	static final int MAX_ATTRIBUTES = 50;
 	static final int MAX_OPTIONS = 100;
 
+	/**
+	 * A category image is a plain absolute https URL: at most 500 characters, a host, no credentials, no whitespace or control characters and no fragment.
+	 * The server never fetches it (no SSRF surface); it only ends up in an {@code <img src>} on the storefront, whose Content-Security-Policy further limits
+	 * images to the configured asset origins. Refusing {@code user:pass@host} and odd characters keeps links from being used to phish or to smuggle markup.
+	 */
+	static boolean isSafeImageUrl(String url) {
+		if (url.length() > 500 || !url.startsWith("https://")) {
+			return false;
+		}
+		for (int i = 0; i < url.length(); i++) {
+			char c = url.charAt(i);
+			if (c <= ' ' || c == 0x7f || c == '"' || c == '\'' || c == '<' || c == '>' || c == '\\' || c == '`') {
+				return false;
+			}
+		}
+		try {
+			var uri = new java.net.URI(url);
+			return "https".equals(uri.getScheme()) && uri.getHost() != null && !uri.getHost().isBlank() && uri.getUserInfo() == null && uri.getFragment() == null;
+		} catch (java.net.URISyntaxException e) {
+			return false;
+		}
+	}
+
 	/** Validates and builds the category. {@code existing} is the category being replaced (null on creation). */
 	public Category toCategory(UUID id, Category existing, int defaultOrder) {
 		var issues = new ArrayList<FieldIssue>();
@@ -53,7 +76,7 @@ public record CategoryDraft(String slug, Map<String, String> name, Map<String, S
 			}
 		}
 		var descriptions = texts("description", description, 2000, false, issues);
-		if (imageUrl != null && !imageUrl.isBlank() && (imageUrl.length() > 500 || !imageUrl.startsWith("https://"))) {
+		if (imageUrl != null && !imageUrl.isBlank() && !isSafeImageUrl(imageUrl.strip())) {
 			issues.add(new FieldIssue("imageUrl", "invalid"));
 		}
 		if (displayOrder != null && (displayOrder < 0 || displayOrder > 100_000)) {

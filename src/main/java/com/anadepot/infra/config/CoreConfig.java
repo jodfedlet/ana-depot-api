@@ -67,6 +67,12 @@ class CoreConfig {
 	}
 
 	@Bean
+	com.anadepot.core.reservation.service.ReservationAdminService reservationAdminService(ReservationRepository reservations, AuditRecorder audit, IdempotencyService idempotency, TransactionBoundary tx,
+			Clock clock) {
+		return new com.anadepot.core.reservation.serviceImpl.ReservationAdminServiceImpl(reservations, audit, idempotency, tx, clock);
+	}
+
+	@Bean
 	InventoryService inventoryService(InventoryRepository inventory, TransactionBoundary tx, Clock clock, AuditRecorder audit, DomainEventRecorder events, IdempotencyService idempotency) {
 		return new InventoryServiceImpl(inventory, tx, clock, audit, events, idempotency);
 	}

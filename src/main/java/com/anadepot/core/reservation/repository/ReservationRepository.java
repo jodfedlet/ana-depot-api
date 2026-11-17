@@ -20,6 +20,9 @@ public interface ReservationRepository {
 
 	boolean referenceExists(String reference);
 
+	/** Staff listing: every status, filters combined with AND (see {@link com.anadepot.core.reservation.model.ReservationQuery}). */
+	PageResult<Reservation> findPage(com.anadepot.core.reservation.model.ReservationQuery query, PageRequest page);
+
 	/** A customer's reservations, newest first. */
 	PageResult<Reservation> findByCustomerId(UUID customerId, PageRequest page);
 

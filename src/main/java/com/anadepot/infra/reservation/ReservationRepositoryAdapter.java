@@ -27,6 +27,8 @@ class ReservationRepositoryAdapter implements ReservationRepository {
 
 	private final ReservationJpaRepository jpa;
 	private final Clock clock;
+	@jakarta.persistence.PersistenceContext
+	private jakarta.persistence.EntityManager em;
 
 	ReservationRepositoryAdapter(ReservationJpaRepository jpa, Clock clock) {
 		this.jpa = jpa;
@@ -145,6 +147,71 @@ class ReservationRepositoryAdapter implements ReservationRepository {
 	@Override
 	public boolean referenceExists(String reference) {
 		return jpa.existsByReference(reference);
+	}
+
+	@Override
+	public PageResult<Reservation> findPage(com.anadepot.core.reservation.model.ReservationQuery q, PageRequest page) {
+		var from = new StringBuilder(" from ReservationEntity r where 1 = 1");
+		var params = new java.util.LinkedHashMap<String, Object>();
+		if (q.status() != null) {
+			from.append(" and r.status = :status");
+			params.put("status", q.status());
+		}
+		if (q.currency() != null) {
+			from.append(" and exists (select 1 from ReservationTotalEntity c where c.reservation = r and c.currency = :currency)");
+			params.put("currency", q.currency());
+		}
+		if (q.paymentStatus() != null) {
+			final String unsettled = "exists (select 1 from ReservationTotalEntity t where t.reservation = r and t.paidAmount < t.totalAmount)";
+			final String anyPaid = "exists (select 1 from ReservationTotalEntity t where t.reservation = r and t.paidAmount > 0)";
+			switch (q.paymentStatus()) {
+				case PAID -> from.append(" and not ").append(unsettled);
+				case UNPAID -> from.append(" and not ").append(anyPaid);
+				case PARTIAL -> from.append(" and ").append(anyPaid).append(" and ").append(unsettled);
+			}
+		}
+		if (q.productId() != null) {
+			from.append(" and exists (select 1 from ReservationLineEntity l where l.reservation = r and l.productId = :productId)");
+			params.put("productId", q.productId());
+		}
+		if (q.customerId() != null) {
+			from.append(" and r.customerId = :customerId");
+			params.put("customerId", q.customerId());
+		}
+		if (q.createdFrom() != null) {
+			from.append(" and r.createdAt >= :from");
+			params.put("from", q.createdFrom());
+		}
+		if (q.createdTo() != null) {
+			from.append(" and r.createdAt < :to");
+			params.put("to", q.createdTo());
+		}
+		if (q.text() != null) {
+			var text = escape(q.text().toLowerCase(java.util.Locale.ROOT));
+			var digits = q.text().replaceAll("\\D", "");
+			from.append(" and (r.reference like :reference escape '\\' or lower(r.contactFirstName) like :name escape '\\' or lower(r.contactLastName) like :name escape '\\'")
+					.append(" or lower(concat(r.contactFirstName, ' ', r.contactLastName)) like :name escape '\\' or lower(r.contactEmail) like :name escape '\\'");
+			params.put("reference", escape(q.text().toUpperCase(java.util.Locale.ROOT).replaceAll("\\s+", "")) + "%");
+			params.put("name", "%" + text + "%");
+			if (digits.length() >= 4) {
+				from.append(" or replace(replace(replace(r.contactPhone, ' ', ''), '-', ''), '+', '') like :phone escape '\\'");
+				params.put("phone", "%" + digits + "%");
+			}
+			from.append(")");
+		}
+		var order = q.sort() == com.anadepot.core.reservation.model.ReservationQuery.Sort.OLDEST ? " order by r.createdAt asc, r.id" : " order by r.createdAt desc, r.id";
+		var query = em.createQuery("select r" + from + order, ReservationEntity.class);
+		var count = em.createQuery("select count(r)" + from, Long.class);
+		params.forEach((k, v) -> {
+			query.setParameter(k, v);
+			count.setParameter(k, v);
+		});
+		query.setFirstResult(page.page() * page.size()).setMaxResults(page.size());
+		return new PageResult<>(query.getResultList().stream().map(ReservationRepositoryAdapter::toDomain).toList(), page.page(), page.size(), count.getSingleResult());
+	}
+
+	private static String escape(String s) {
+		return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
 	}
 
 	@Override

@@ -3,6 +3,7 @@ package com.anadepot.infra.payment;
 import com.anadepot.core.payment.model.AttemptStatus;
 import com.anadepot.core.payment.model.PaymentAttempt;
 import com.anadepot.core.payment.service.OnlinePaymentService;
+import com.anadepot.core.reservation.repository.ReservationRepository;
 import com.anadepot.core.shared.PageRequest;
 import com.anadepot.infra.web.PageResponse;
 import java.time.Instant;
@@ -18,15 +19,17 @@ import org.springframework.web.bind.annotation.RestController;
 class AdminPaymentAttemptController {
 
 	private final OnlinePaymentService online;
+	private final ReservationRepository reservations;
 
-	AdminPaymentAttemptController(OnlinePaymentService online) {
+	AdminPaymentAttemptController(OnlinePaymentService online, ReservationRepository reservations) {
 		this.online = online;
+		this.reservations = reservations;
 	}
 
-	record AttemptResponse(UUID id, UUID reservationId, String currency, String amount, String provider, String status, String providerSessionId, String providerPaymentIntentId,
+	record AttemptResponse(UUID id, UUID reservationId, String reservationReference, String currency, String amount, String provider, String status, String providerSessionId, String providerPaymentIntentId,
 			Instant expiresAt, UUID paymentId, boolean requiresAttention, String attentionReason, String failureCode, Instant createdAt, Instant updatedAt) {
-		static AttemptResponse of(PaymentAttempt a) {
-			return new AttemptResponse(a.id(), a.reservationId(), a.amount().currency().name(), a.amount().amount().toPlainString(), "STRIPE", a.status().name(), a.sessionId(),
+		static AttemptResponse of(PaymentAttempt a, String reference) {
+			return new AttemptResponse(a.id(), a.reservationId(), reference, a.amount().currency().name(), a.amount().amount().toPlainString(), "STRIPE", a.status().name(), a.sessionId(),
 					a.paymentIntentId(), a.expiresAt(), a.paymentId(), a.requiresAttention(), a.attentionReason(), a.failureCode(), a.createdAt(), a.updatedAt());
 		}
 	}
@@ -36,6 +39,7 @@ class AdminPaymentAttemptController {
 			@RequestParam(required = false) String status, @RequestParam(required = false) Boolean requiresAttention) {
 		var s = com.anadepot.infra.web.QueryParams.enumOf(AttemptStatus.class, status, "status");
 		var result = online.attempts(reservationId, s, requiresAttention, new PageRequest(page, size));
-		return PageResponse.of(result, AttemptResponse::of);
+		var references = reservations.referencesOf(result.items().stream().map(PaymentAttempt::reservationId).distinct().toList());
+		return PageResponse.of(result, a -> AttemptResponse.of(a, references.get(a.reservationId())));
 	}
 }

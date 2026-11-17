@@ -399,6 +399,7 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 		get("/api/v1/admin/payment-attempts", token(UUID.randomUUID())).andExpect(status().isForbidden());
 		var list = JSON.readTree(get("/api/v1/admin/payment-attempts?reservationId=" + r.id(), staffToken).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
 		assertThat(list.get("items").get(0).has("checkoutUrl")).isFalse(); // staff never see checkout URLs
+		assertThat(list.get("items").get(0).get("reservationReference").asString()).isEqualTo(r.reference());
 	}
 
 	// ---- concurrency ----------------------------------------------------------------------------------------------

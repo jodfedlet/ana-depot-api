@@ -24,4 +24,10 @@ public interface PaymentRepository {
 	Optional<LedgerEntry> receivedEntryOf(UUID paymentId);
 
 	boolean isReversed(UUID ledgerEntryId);
+
+	/** Staff listing of payments, newest received first. */
+	com.anadepot.core.shared.PageResult<Payment> findPage(com.anadepot.core.payment.model.PaymentQuery query, com.anadepot.core.shared.PageRequest page);
+
+	/** The reversal entry of each reversed payment among {@code paymentIds} (payments that were never reversed are absent). */
+	java.util.Map<UUID, LedgerEntry> reversalsOf(java.util.Collection<UUID> paymentIds);
 }

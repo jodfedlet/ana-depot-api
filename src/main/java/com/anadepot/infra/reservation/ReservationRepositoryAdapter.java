@@ -210,6 +210,16 @@ class ReservationRepositoryAdapter implements ReservationRepository {
 		return new PageResult<>(query.getResultList().stream().map(ReservationRepositoryAdapter::toDomain).toList(), page.page(), page.size(), count.getSingleResult());
 	}
 
+	@Override
+	public java.util.Map<UUID, String> referencesOf(java.util.Collection<UUID> ids) {
+		var result = new java.util.HashMap<UUID, String>();
+		if (!ids.isEmpty()) {
+			em.createQuery("select r.id, r.reference from ReservationEntity r where r.id in :ids", Object[].class).setParameter("ids", ids).getResultList()
+					.forEach(row -> result.put((UUID) row[0], (String) row[1]));
+		}
+		return result;
+	}
+
 	private static String escape(String s) {
 		return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
 	}

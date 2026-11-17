@@ -17,10 +17,64 @@ class PaymentRepositoryAdapter implements PaymentRepository {
 
 	private final PaymentJpaRepository payments;
 	private final LedgerEntryJpaRepository ledger;
+	@jakarta.persistence.PersistenceContext
+	private jakarta.persistence.EntityManager em;
 
 	PaymentRepositoryAdapter(PaymentJpaRepository payments, LedgerEntryJpaRepository ledger) {
 		this.payments = payments;
 		this.ledger = ledger;
+	}
+
+	@Override
+	public com.anadepot.core.shared.PageResult<Payment> findPage(com.anadepot.core.payment.model.PaymentQuery q, com.anadepot.core.shared.PageRequest page) {
+		var from = new StringBuilder(" from PaymentEntity p where 1 = 1");
+		var params = new java.util.LinkedHashMap<String, Object>();
+		if (q.reservationId() != null) {
+			from.append(" and p.reservationId = :reservationId");
+			params.put("reservationId", q.reservationId());
+		}
+		if (q.currency() != null) {
+			from.append(" and p.currency = :currency");
+			params.put("currency", q.currency());
+		}
+		if (q.method() != null) {
+			from.append(" and p.paymentMethod = :method");
+			params.put("method", q.method());
+		}
+		if (q.receivedFrom() != null) {
+			from.append(" and p.receivedAt >= :from");
+			params.put("from", q.receivedFrom());
+		}
+		if (q.receivedTo() != null) {
+			from.append(" and p.receivedAt < :to");
+			params.put("to", q.receivedTo());
+		}
+		if (q.recordedBy() != null) {
+			from.append(" and p.recordedBy = :recordedBy");
+			params.put("recordedBy", q.recordedBy());
+		}
+		if (q.reversed() != null) {
+			from.append(q.reversed() ? " and " : " and not ").append("exists (select 1 from LedgerEntryEntity l where l.paymentId = p.id and l.entryType = :reversalType)");
+			params.put("reversalType", LedgerEntryType.PAYMENT_REVERSAL);
+		}
+		var query = em.createQuery("select p" + from + " order by p.receivedAt desc, p.id", PaymentEntity.class);
+		var count = em.createQuery("select count(p)" + from, Long.class);
+		params.forEach((k, v) -> {
+			query.setParameter(k, v);
+			count.setParameter(k, v);
+		});
+		query.setFirstResult(page.page() * page.size()).setMaxResults(page.size());
+		return new com.anadepot.core.shared.PageResult<>(query.getResultList().stream().map(PaymentRepositoryAdapter::toDomain).toList(), page.page(), page.size(), count.getSingleResult());
+	}
+
+	@Override
+	public java.util.Map<UUID, LedgerEntry> reversalsOf(java.util.Collection<UUID> paymentIds) {
+		var result = new java.util.HashMap<UUID, LedgerEntry>();
+		if (!paymentIds.isEmpty()) {
+			em.createQuery("select l from LedgerEntryEntity l where l.entryType = :type and l.paymentId in :ids", LedgerEntryEntity.class).setParameter("type", LedgerEntryType.PAYMENT_REVERSAL)
+					.setParameter("ids", paymentIds).getResultList().forEach(e -> result.put(e.paymentId, toDomain(e)));
+		}
+		return result;
 	}
 
 	@Override

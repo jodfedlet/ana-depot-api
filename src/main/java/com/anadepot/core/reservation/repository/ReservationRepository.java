@@ -28,4 +28,7 @@ public interface ReservationRepository {
 
 	/** Sum of quantities held by OPEN reservations for one stock position (used to reconcile {@code inventory_items.reserved}). */
 	int openHeldQuantity(ItemKey key);
+
+	/** The reference of each reservation id (unknown ids are absent). */
+	java.util.Map<UUID, String> referencesOf(java.util.Collection<UUID> ids);
 }

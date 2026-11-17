@@ -73,6 +73,11 @@ class CoreConfig {
 	}
 
 	@Bean
+	com.anadepot.core.payment.service.PaymentAdminService paymentAdminService(com.anadepot.core.payment.repository.PaymentRepository payments, ReservationRepository reservations, TransactionBoundary tx) {
+		return new com.anadepot.core.payment.serviceImpl.PaymentAdminServiceImpl(payments, reservations, tx);
+	}
+
+	@Bean
 	InventoryService inventoryService(InventoryRepository inventory, TransactionBoundary tx, Clock clock, AuditRecorder audit, DomainEventRecorder events, IdempotencyService idempotency) {
 		return new InventoryServiceImpl(inventory, tx, clock, audit, events, idempotency);
 	}

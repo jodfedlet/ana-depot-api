@@ -61,6 +61,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 				response.setStatus(429);
 				response.setHeader("Retry-After", String.valueOf(Math.max(1, decision.retryAfter().toSeconds())));
 				response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+				response.setCharacterEncoding("UTF-8");
 				response.getWriter().write("{\"type\":\"about:blank\",\"title\":\"Too Many Requests\",\"status\":429,\"code\":\"rate_limited\",\"detail\":\"Too many requests. Try again later.\"}");
 				return;
 			}

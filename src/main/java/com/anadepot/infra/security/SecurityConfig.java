@@ -10,11 +10,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.CrossOriginOpenerPolicyHeaderWriter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
@@ -28,9 +31,10 @@ class SecurityConfig {
 
 	@Bean
 	SecurityFilterChain apiSecurity(HttpSecurity http, StaffAuthoritiesConverter authorities, ProblemSecurityHandlers handlers,
-			RateLimiter limiter, AnaProperties properties, CorsProperties cors) throws Exception {
+			RateLimiter limiter, AnaProperties properties, CorsProperties cors, HeaderProperties headerProperties) throws Exception {
 		http
 				.cors(c -> c.configurationSource(corsSource(cors)))
+				.headers(h -> responseHeaders(h, headerProperties))
 				.csrf(csrf -> csrf.disable()) // stateless bearer-token API: no cookies, nothing for CSRF to ride on
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(a -> a
@@ -49,6 +53,22 @@ class SecurityConfig {
 				.exceptionHandling(e -> e.authenticationEntryPoint(handlers).accessDeniedHandler(handlers))
 				.addFilterAfter(new RateLimitFilter(limiter, new ClientIpResolver(properties.rateLimit().trustedProxies())), BearerTokenAuthenticationFilter.class);
 		return http.build();
+	}
+
+	/**
+	 * Response headers of a JSON-only API. Spring Security already adds {@code X-Content-Type-Options: nosniff}, {@code X-Frame-Options: DENY} and
+	 * {@code Cache-Control: no-store} (so no private response is ever kept by a browser or shared cache); this adds a locked-down CSP (the API never serves
+	 * a document), no referrer, a closed Permissions-Policy and, when the deployment is HTTPS-only, HSTS regardless of what the proxy forwards.
+	 */
+	static void responseHeaders(HeadersConfigurer<HttpSecurity> headers, HeaderProperties properties) {
+		headers
+				.contentSecurityPolicy(c -> c.policyDirectives("default-src 'none'; frame-ancestors 'none'"))
+				.referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+				.permissionsPolicyHeader(p -> p.policy("camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"))
+				.crossOriginOpenerPolicy(c -> c.policy(CrossOriginOpenerPolicyHeaderWriter.CrossOriginOpenerPolicy.SAME_ORIGIN));
+		if (properties.hsts()) {
+			headers.httpStrictTransportSecurity(h -> h.requestMatcher(request -> true).maxAgeInSeconds(63_072_000).includeSubDomains(true));
+		}
 	}
 
 	/**

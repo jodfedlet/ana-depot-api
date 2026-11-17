@@ -54,6 +54,8 @@ springdoc:
 
 # Operational limits and external configuration (see docs/auth.md and docs/adr).
 ana:
+  headers:
+    hsts: ${ANA_HSTS_ENABLED:false}                      # true in production (HTTPS-only): sends Strict-Transport-Security even behind a TLS-terminating proxy
   cors:
     allowed-origins: ${ANA_CORS_ALLOWED_ORIGINS:}        # comma-separated exact origins of the storefront (e.g. https://www.example.com); empty = no browser origin allowed
   legal:

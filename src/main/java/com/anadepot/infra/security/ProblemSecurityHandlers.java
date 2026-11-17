@@ -28,6 +28,7 @@ public class ProblemSecurityHandlers implements AuthenticationEntryPoint, Access
 	private static void write(HttpServletResponse response, int status, String title, String code, String detail) throws IOException {
 		response.setStatus(status);
 		response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+		response.setCharacterEncoding("UTF-8");
 		response.getWriter().write("{\"type\":\"about:blank\",\"title\":\"" + title + "\",\"status\":" + status + ",\"code\":\"" + code + "\",\"detail\":\"" + detail + "\"}");
 	}
 }

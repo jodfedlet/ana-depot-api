@@ -18,6 +18,10 @@ interface ProductJpaRepository extends JpaRepository<ProductEntity, UUID> {
 
 	Page<ProductEntity> findByStatus(ProductStatus status, Pageable pageable);
 
+	boolean existsBySlug(String slug);
+
+	boolean existsBySlugAndIdNot(String slug, UUID id);
+
 	boolean existsBySku(String sku);
 
 	boolean existsBySkuAndIdNot(String sku, UUID id);

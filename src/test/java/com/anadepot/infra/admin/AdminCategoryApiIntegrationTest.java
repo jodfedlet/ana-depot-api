@@ -97,6 +97,14 @@ class AdminCategoryApiIntegrationTest extends ApiTestSupport {
 	}
 
 	@Test
+	void anActiveCategoryNeedsBothLanguagesButAnInactiveOneMayBeIncomplete() throws Exception {
+		var staffToken = newStaffToken();
+		post("/api/v1/admin/categories", Map.of("slug", unique("fr"), "name", Map.of("fr", "Seulement")), staffToken, null).andExpect(status().isUnprocessableContent())
+				.andExpect(jsonPath("$.errors[?(@.field=='name.ht')]").isNotEmpty());
+		post("/api/v1/admin/categories", Map.of("slug", unique("fr"), "name", Map.of("fr", "Seulement"), "active", false), staffToken, null).andExpect(status().isCreated());
+	}
+
+	@Test
 	void duplicateSlugIs409AndIdempotentCreateReturnsTheSameCategory() throws Exception {
 		var staffToken = newStaffToken();
 		var slug = unique("dup");

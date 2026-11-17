@@ -45,6 +45,13 @@ public record CategoryDraft(String slug, Map<String, String> name, Map<String, S
 			issues.add(new FieldIssue("slug", "invalid"));
 		}
 		var names = texts("name", name, 200, true, issues);
+		if (active == null || active) {
+			for (var lang : List.of("fr", "ht")) {
+				if (names.values().get(lang) == null && issues.stream().noneMatch(i -> i.field().equals("name"))) {
+					issues.add(new FieldIssue("name." + lang, "required_to_publish"));   // an active category is customer-facing: both languages
+				}
+			}
+		}
 		var descriptions = texts("description", description, 2000, false, issues);
 		if (imageUrl != null && !imageUrl.isBlank() && (imageUrl.length() > 500 || !imageUrl.startsWith("https://"))) {
 			issues.add(new FieldIssue("imageUrl", "invalid"));

@@ -149,6 +149,81 @@ class ProductSearchNative implements ProductSearchIndex {
 		return new PageResult<>(ids, page.page(), page.size(), ((Number) count.getSingleResult()).longValue());
 	}
 
+	/**
+	 * Staff listing: every status, any combination of filters, full-text OR exact/prefix on SKU, variant SKU and slug. Same rules as {@link #search}: fixed SQL
+	 * fragments, every value a bound parameter (LIKE wildcards in staff text are escaped), count and page share one WHERE.
+	 */
+	PageResult<UUID> searchAdmin(com.anadepot.core.catalog.model.AdminProductQuery q, PageRequest page) {
+		if ((long) page.page() * page.size() > MAX_OFFSET) {
+			throw new DomainRuleViolation("page_out_of_range", "Results beyond position " + MAX_OFFSET + " are not available: refine the search");
+		}
+		var params = new LinkedHashMap<String, Object>();
+		var where = new StringBuilder(" from products p where 1 = 1\n");
+		boolean text = !q.text().isEmpty();
+		if (text) {
+			where.append(" and (p.search_vector @@ to_tsquery('simple', cast(:tsq as text)) or lower(p.sku) like :ref escape '\\' or lower(p.slug) like :ref escape '\\'")
+					.append(" or exists (select 1 from product_variants pv where pv.product_id = p.id and lower(pv.sku) like :ref escape '\\'))\n");
+			params.put("tsq", q.text().tsQuery());
+			params.put("ref", q.text().exact().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
+		}
+		if (q.status() != null) {
+			where.append(" and p.status = :status\n");
+			params.put("status", q.status().name());
+		}
+		if (q.categoryId() != null) {
+			where.append(" and p.category_id = :categoryId\n");
+			params.put("categoryId", q.categoryId());
+		}
+		if (q.brand() != null) {
+			where.append(" and lower(p.brand) = :brand\n");
+			params.put("brand", q.brand().toLowerCase(Locale.ROOT));
+		}
+		if (q.currency() != null) {
+			where.append(" and exists (select 1 from product_prices pp where pp.product_id = p.id and pp.currency = :currency)\n");
+			params.put("currency", q.currency().name());
+		}
+		if (q.stock() != null) {
+			final String inStock = "exists (select 1 from inventory_items i where i.product_id = p.id and (not i.tracked or i.on_hand - i.reserved > 0))";
+			final String anyRecord = "exists (select 1 from inventory_items i where i.product_id = p.id)";
+			switch (q.stock()) {
+				case IN_STOCK -> where.append(" and ").append(inStock).append("\n");
+				case OUT_OF_STOCK -> where.append(" and ").append(anyRecord).append(" and not ").append(inStock).append("\n");
+				case LOW_STOCK -> where.append(" and exists (select 1 from inventory_items i where i.product_id = p.id and i.tracked and i.low_stock_threshold is not null")
+						.append(" and i.on_hand - i.reserved <= i.low_stock_threshold)\n");
+				case NO_STOCK_RECORD -> where.append(" and not ").append(anyRecord).append("\n");
+			}
+		}
+		var select = new StringBuilder("select p.id").append(where).append(" order by ");
+		switch (q.sort()) {
+			case RELEVANCE -> {
+				select.append("""
+						(case when lower(p.sku) = :exact or exists (select 1 from product_variants pv where pv.product_id = p.id and lower(pv.sku) = :exact) then 0 else 1 end),
+						 ts_rank_cd(p.search_vector, to_tsquery('simple', cast(:tsq as text)), 32) desc, p.created_at desc, p.id""");
+				params.put("exact", q.text().exact());
+			}
+			case NEWEST -> select.append("p.created_at desc, p.id");
+			case UPDATED -> select.append("p.updated_at desc, p.id");
+			case NAME -> select.append("p.sort_name, p.id");
+			case SKU -> select.append("p.sku nulls last, p.id");
+		}
+		var query = em.createNativeQuery(select.toString());
+		var count = em.createNativeQuery("select count(*)" + where);
+		params.forEach((k, v) -> {
+			if (!k.equals("exact")) {
+				count.setParameter(k, v);
+			}
+			query.setParameter(k, v);
+		});
+		query.setFirstResult(page.page() * page.size()).setMaxResults(page.size());
+		timeout(query);
+		timeout(count);
+		var ids = new ArrayList<UUID>();
+		for (var row : query.getResultList()) {
+			ids.add((UUID) row);
+		}
+		return new PageResult<>(ids, page.page(), page.size(), ((Number) count.getSingleResult()).longValue());
+	}
+
 	private static void timeout(Query q) {
 		q.setHint("jakarta.persistence.query.timeout", TIMEOUT_MS);
 	}

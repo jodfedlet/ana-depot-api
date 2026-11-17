@@ -133,9 +133,9 @@ class AdminCategoryController {
 	}
 
 	@GetMapping("/{id}/products")
-	ProductDtos.PageResponse<AdminProductDtos.Summary> products(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+	ProductDtos.PageResponse<AdminProductDtos.Line> products(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
 		var result = categories.products(id, new PageRequest(page, size));
-		return new ProductDtos.PageResponse<>(result.items().stream().map(AdminProductDtos.Summary::of).toList(), result.page(), result.size(), result.totalItems(), result.totalPages());
+		return new ProductDtos.PageResponse<>(result.items().stream().map(AdminProductDtos.Line::of).toList(), result.page(), result.size(), result.totalItems(), result.totalPages());
 	}
 
 	@PostMapping("/{id}/products/move")

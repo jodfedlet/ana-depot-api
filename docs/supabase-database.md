@@ -120,7 +120,7 @@ Record the date and result in the deployment notes.
 
 | Check | Result |
 |---|---|
-| Flyway V1-V11 + `ddl-auto=validate` + application start on the **Supabase Postgres image** (`public.ecr.aws/supabase/postgres:17.6.1.064`, the image the Supabase CLI uses), throwaway container with its own database | see "Smoke on the Supabase Postgres image" below |
+| Flyway V1-V13 + `ddl-auto=validate` + application start on the **Supabase Postgres image** (`public.ecr.aws/supabase/postgres:17.6.1.064`, the image the Supabase CLI uses), throwaway container with its own database | see "Smoke on the Supabase Postgres image" below |
 | V11 on plain PostgreSQL, simulated Supabase roles/default privileges, idempotency | automated: `DataApiLockdownIntegrationTest` (Testcontainers PostgreSQL 17) |
 | `ProductionConfigGuard`, JWKS override, issuer derivation | automated unit tests |
 | Anything against the **hosted** Supabase service (pooler behavior, TLS chain, Data API exposure, plan limits) | **NOT VERIFIED**: needs a real project; use the checklist above |
@@ -134,6 +134,10 @@ local stack, which was stopped and left untouched) and the packaged jar:
 | jar, role `postgres`, database `postgres` (Supabase's real default ACLs: `anon`, `authenticated`, `service_role` have `arwdDxtm` on future tables of `public`) | Flyway applied V1-V11 without error, Hibernate `ddl-auto=validate` passed, `GET /actuator/health` UP, `GET /api/v1/products` empty page, `GET /api/v1/store/pickup` `not_configured` |
 | afterwards, as `postgres` | tables without RLS: **0**; policies: **0**; grants to `anon/authenticated/service_role` on `public` tables: **0**; `set local role anon; select count(*) from products` -> **permission denied for table products**; `select ... for update skip locked` and `select ... for update` run fine |
 | jar, **dedicated role `ana_app`** (owner of its database), profile `prod` (`SUPABASE_URL` set) | start-up OK in 5.8 s, health UP, empty product page, RLS everywhere, 0 API grants; `ProductionConfigGuard` printed its two warnings (no `sslmode` in the URL, no trusted proxies) |
+
+Re-run on 2026-11-17 for the Phase 2 admin API (V12 reservation terms, V13 customer version; throwaway container `anadepot-smoke-pg`, removed afterwards; packaged jar, profile `local`, role `postgres`): Flyway applied **13 migrations**, `ddl-auto=validate` passed,
+`GET /actuator/health` UP, `GET /api/v1/products` 200, `GET /api/v1/admin/products` and `/admin/reports/overview` without a token 401; afterwards: tables without RLS **only `flyway_schema_history`** (Flyway's own bookkeeping table), policies 0, grants to the API roles 0,
+`set role anon; select count(*) from products` -> permission denied. The staff endpoints themselves were not exercised on this image (they run on `postgres:17-alpine` in the test suite).
 
 Findings worth knowing:
 * In `pg_default_acl` the entries created **by `supabase_admin`** still grant to `anon`/`authenticated`/`service_role`. V11 revokes the defaults of the role that runs it; it cannot (and must not try to)

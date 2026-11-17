@@ -33,10 +33,17 @@ DTOs are separate from JPA entities and from domain objects. Search specifics: [
 | `POST /api/v1/admin/products/{id}/images/uploads` | staff | `upload.request` | request an image upload ticket |
 | `POST /api/v1/admin/products/{id}/images/uploads/{uploadId}/complete` | staff | `admin.write` | verify the upload and attach the image |
 | `GET /api/v1/admin/products/{id}/images`, `PUT .../images/order`, `DELETE .../images/{imageId}` | staff | `admin.write` (writes) | list, reorder, delete (deletes the object) |
+| `/api/v1/admin/categories` ... (8 endpoints) | staff | `admin.write` (writes) | category management, see "Staff admin API" |
+| `/api/v1/admin/products` ... (6 endpoints) | staff | `admin.write` (writes) | product management |
+| `/api/v1/admin/inventory` ... (6 endpoints) | staff | `admin.write` (writes) | stock positions, adjustments, movements |
+| `/api/v1/admin/reservations` ... (9 endpoints) | staff | `admin.write` (writes) | reservation list, detail, lifecycle, notes |
+| `/api/v1/admin/payments`, `.../reservations/{id}/payments|ledger|payment-adjustments|reconciliation` (8 endpoints) | staff | `admin.write` (writes) | payments, reversals, adjustments, ledger |
+| `/api/v1/admin/customers` ... (3 endpoints) | staff | `admin.write` (PUT) | customers |
+| `/api/v1/admin/reports/*` (6 endpoints) | staff | - | reports |
 
 Default limits (all configurable, `ana.rate-limit.limits.*`): `catalog.read` 300/min, `catalog.search` 60/min, `reservation.submit` 10 per 10 min, `reservation.lookup` 20 per 10 min per client,
 `reservation.lookup.reference` 30 per 10 min per reference, `account.read` 120/min, `account.write` 20 per 10 min, `upload.request` 30/min, `admin.write` 240/min, `admin.reindex` 3 per 10 min. The client key is the user id when a token
-is present, else the client IP (`X-Forwarded-For` is trusted only from `ana.rate-limit.trusted-proxies`). Not implemented: product/category/price/stock/payment/reservation **management** endpoints for staff (use cases exist in `core`; no controllers yet).
+is present, else the client IP (`X-Forwarded-For` is trusted only from `ana.rate-limit.trusted-proxies`).
 
 ## Errors (RFC 9457 `application/problem+json`)
 ```json
@@ -52,8 +59,8 @@ is present, else the client IP (`X-Forwarded-For` is trusted only from `ana.rate
 | 401 | no, invalid or expired token (body has no `correlationId`) | `unauthenticated` |
 | 403 | valid token, not staff | `forbidden` |
 | 404 | not found (also: another customer's reservation, another staff member's upload, an inactive/draft product) | `not_found`, `reservation_not_found` |
-| 409 | state conflict | `insufficient_stock`, `idempotency_key_reuse`, `concurrent_update`, `invalid_status`, `data_conflict` |
-| 422 | business rule or field validation | `validation_failed`, `idempotency_key_required`, `idempotency_key_invalid`, `pickup_disabled`, `pickup_not_configured`, `product_unavailable`, `variant_required`, `variant_unavailable`, `below_minimum_order`, `unsupported_currency`, `currency_required`, `search_query_too_long`, `filter_invalid`, `invalid_page`, `page_out_of_range`, `upload_type_not_allowed`, `upload_too_large`, `upload_missing`, `upload_type_mismatch`, `upload_signature_mismatch`, `upload_not_pending`, `upload_expired`, `images_order_invalid` |
+| 409 | state conflict | `insufficient_stock`, `idempotency_key_reuse`, `concurrent_update`, `invalid_status`, `data_conflict`, `duplicate_sku`, `duplicate_slug`, `inventory_exists`, `already_paid`, `already_reversed`, `payment_required`, `category_has_active_products`, `attribute_in_use`, `option_in_use`, `variant_axis_in_use`, `attribute_type_locked`, `attribute_required_violation`, `variant_in_use`, `product_in_use` |
+| 422 | business rule or field validation | `validation_failed`, `idempotency_key_required`, `idempotency_key_invalid`, `pickup_disabled`, `pickup_not_configured`, `product_unavailable`, `variant_required`, `variant_unavailable`, `below_minimum_order`, `unsupported_currency`, `currency_required`, `search_query_too_long`, `filter_invalid`, `invalid_page`, `page_out_of_range`, `upload_type_not_allowed`, `upload_too_large`, `upload_missing`, `upload_type_mismatch`, `upload_signature_mismatch`, `upload_not_pending`, `upload_expired`, `images_order_invalid`, plus the staff codes listed under "Staff admin API" |
 | 429 | rate limit; header `Retry-After` (seconds) | `rate_limited` |
 | 503 | object storage down or not configured | `storage_unavailable`, `storage_not_configured` |
 | 500 | unexpected (details never leaked) | `internal_error` |
@@ -190,6 +197,108 @@ Page of `CustomerReservationView` (newest first), only reservations made **while
 * `GET /admin/products/{productId}/images` -> `{ "items": [ImageResponse] }`; `PUT .../images/order` body `{ "imageIds": [ every current id exactly once ] }` -> the new list (422 `images_order_invalid`; the first is the primary image);
   `DELETE .../images/{imageId}` -> 204 and the stored object is deleted (404 when the image is not that product's). Audited; completion records the outbox event `product.image.uploaded`, removal `product.image.removed`.
 
+## Staff admin API
+Every path below needs a staff token (anonymous 401, signed-in non-staff 403) and is rate limited as `admin.write` when it writes. Lists answer `{ items, page, size, totalItems, totalPages }`; filters combine with AND; an unknown enum value or malformed date is
+422 `validation_failed` (`errors[{field, code: "invalid"}]`); `size` above 100 is 422 `invalid_page`; wildcard characters in a search text are plain text. **Every amount is a decimal string and every figure is per currency: HTG and USD are never summed, converted or compared.**
+Writes are audited (`audit_events`); an audit entry never copies personal text (note bodies, customer names, e-mails).
+
+**Optimistic concurrency.** Replacing endpoints (`PUT`, threshold `PATCH`) require the `version` you read in the body (missing: 422 `errors[{field:"version", code:"required"}]`); a stale version is 409 `concurrent_update` and changes nothing.
+**Idempotency.** `Idempotency-Key` is optional on creates/transitions/notes (a retry with the same key and payload returns the first result; other payload: 409 `idempotency_key_reuse`) and **required** on stock adjustments and every payment write (422 `idempotency_key_required`).
+Authorization is all-or-nothing staff membership: roles/permissions (who may record payments, view reports...) are an open business decision and are not modelled.
+
+### Categories `/admin/categories`
+| Call | Body / query | Result |
+|---|---|---|
+| `GET /admin/categories` | `page,size,active,q` (q: slug or fr/ht name) | page of `{ id, slug, name, imageUrl, active, displayOrder, attributeCount, productCount, activeProductCount, version }` in display order |
+| `GET /admin/categories/{id}` | | detail: `{ id, slug, name{fr,ht}, description, imageUrl, active, displayOrder, version, createdAt, updatedAt, productCount, activeProductCount, attributes[{ id, key, label, type CHOICE\|TEXT\|NUMBER, unit, required, filterable, variantAxis, displayOrder, active, valueCount, options[{ id, code, label, displayOrder, active, useCount }] }] }` |
+| `POST /admin/categories` | `{ slug, name, description?, imageUrl?, active?, displayOrder?, attributes? }` | **201** detail |
+| `PUT /admin/categories/{id}` | the same plus `version`; attribute and option `id`s are kept so products keep pointing at them | detail |
+| `PATCH /admin/categories/{id}/active` | `{ active, reason? }` | detail |
+| `PUT /admin/categories/order` | `{ categoryIds: [every category exactly once] }` | `{ items: [summary] }` (422 `order_incomplete`) |
+| `GET /admin/categories/{id}/products` | `page,size` | page of `{ id, sku, slug, name, brand, status, currencies[], variantCount, imageCount, updatedAt }` (every status) |
+| `POST /admin/categories/{id}/products/move` | `{ toCategoryId, productIds: [1..200] }` | `{ moved }`, all or nothing; each product is re-validated against the target category |
+Rules: an active category needs `name.fr` and `name.ht` (422 `errors[{name.ht, required_to_publish}]`); slug `[a-z0-9-]`, unique (409 `duplicate_slug`); `CHOICE` attributes need options, only they can be `filterable`/`variantAxis`. Protection of what products rely on: removing an attribute with values or variant axes
+409 `attribute_in_use`; removing a chosen option 409 `option_in_use`; changing the type of an attribute holding values 409 `attribute_type_locked`; un-marking an axis used by variants 409 `variant_axis_in_use`; making an attribute required while active products lack it
+409 `attribute_required_violation`; deactivating while active products exist 409 `category_has_active_products`; moving into an inactive category 422 `category_inactive`, a product not in the source category 422 `product_not_in_category`.
+Audit: `CATEGORY_CREATED|UPDATED|ACTIVATED|DEACTIVATED`, `CATEGORIES_REORDERED`, `CATEGORY_PRODUCTS_MOVED`.
+
+### Products `/admin/products`
+| Call | Body / query | Result |
+|---|---|---|
+| `GET /admin/products` | `page,size,q,status,categoryId,brand,currency,stock,sort` | page of summaries |
+| `GET /admin/products/{id}` | | detail |
+| `POST /admin/products` | product body (below); `status` DRAFT (default) or ACTIVE | **201** detail |
+| `PUT /admin/products/{id}` | product body + `version` | detail (images and status are kept) |
+| `PATCH /admin/products/{id}/status` | `{ status: ACTIVE\|INACTIVE, reason? }` | detail |
+| `DELETE /admin/products/{id}` | | 204 |
+Filters: `q` is the PostgreSQL full-text query of the public search **plus** SKU / variant SKU / slug prefix (an exact SKU ranks first); `status` DRAFT\|ACTIVE\|INACTIVE; `currency` = has a price in that currency; `stock` IN_STOCK\|LOW_STOCK\|OUT_OF_STOCK\|NO_STOCK_RECORD;
+`sort` RELEVANCE (default with `q`)\|NEWEST (default)\|UPDATED\|NAME\|SKU.
+Product body: `{ sku?, slug?, categoryId, name{fr,ht}, description?, brand?, unit (UNIT\|PAIR\|PACK\|BOX\|SET\|METER\|KILOGRAM), unitNote?, status?, prices: [{ currency, retail, sale?, minOrderQuantity?, wholesaleEnabled?, tiers: [{ minQuantity, unitPrice }], active? }],
+variants: [{ id?, sku, active?, position?, axisValues: { <attributeId>: <optionId> }, retailOverrides?: { HTG?: "…", USD?: "…" } }], attributes: [{ attributeId, optionId \| text \| number }] }` - amounts are decimal text; **each currency has its own price block** (a currency without a price is simply not sold in it);
+a missing `slug` is derived from the name (numbered when taken). Detail adds `{ id, version, createdAt, updatedAt, images[{id,url,alt,position}], stock{ onHand, reserved, available, hasUntrackedPosition, state, positions[…] } }` (stock figures are staff-only; the public API exposes `availableQuantity` only).
+Rules and codes: structural problems are one 422 `validation_failed` listing every field (`prices[0].retail`, `variants[1].sku`...); price rules 422 `retail_price_invalid`, `sale_price_invalid`, `tier_*`, `wholesale_disabled_with_tiers`, `price_required` (publishing); 409 `duplicate_sku` (also against another product's variant SKUs),
+`duplicate_slug`; a published product needs `name.fr` and `name.ht` (422 `required_to_publish`); a variant that has a stock record or reservation lines cannot be removed, only deactivated (409 `variant_in_use`); status lifecycle DRAFT to ACTIVE, ACTIVE to INACTIVE, INACTIVE to ACTIVE
+(409 `invalid_status`); `DELETE` only for a DRAFT without images, stock record or reservation lines (409 `product_in_use`). Reservations already made keep their snapshot whatever happens to the product.
+Audit: `PRODUCT_CREATED|UPDATED|DELETED|ACTIVATED|DEACTIVATED`, `PRODUCT_PRICE_CHANGED`, `PRODUCT_PRICE_REMOVED`, `PRODUCT_STATUS_CHANGED`. Images: the upload endpoints above.
+
+### Inventory `/admin/inventory` (stock is shared by HTG and USD)
+| Call | Body / query | Result |
+|---|---|---|
+| `GET /admin/inventory` | `page,size,productId,categoryId,state OK\|LOW\|OUT\|UNTRACKED,q,sort UPDATED\|AVAILABLE_ASC` | page of positions |
+| `GET /admin/inventory/{id}` | | one position |
+| `POST /admin/inventory` | `{ productId, variantId?, tracked?=true, initialOnHand?=0, lowStockThreshold? }` | **201** position |
+| `POST /admin/inventory/{id}/adjustments` | `{ type ADD\|REDUCE\|RECOUNT, quantity, reason RECEPTION\|RETURN\|DAMAGE\|LOSS\|CORRECTION\|COUNT\|OTHER, note? }` + **required** `Idempotency-Key` | **201** movement |
+| `PATCH /admin/inventory/{id}/threshold` | `{ version, lowStockThreshold }` (null clears) | position |
+| `GET /admin/inventory/{id}/movements` | `page,size` | movements, newest first |
+Position: `{ id, productId, variantId, productSku, productName, productStatus, categoryId, variantSku, tracked, onHand, reserved, available, lowStockThreshold, state, version, updatedAt }` (`onHand/reserved/available` are null when untracked). `available = onHand - reserved`; reservations own `reserved`; an adjustment never touches it.
+Movement: `{ id, inventoryItemId, type INITIAL\|ADD\|REDUCE\|RECOUNT\|SALE, delta, balanceAfter, reason, reservationId, note, at, recordedBy }` (append-only). Codes: 409 `inventory_exists`; 422 `variant_required` (a product with variants is stocked per variant), `stock_negative`, `stock_invalid`,
+`inventory_not_tracked`, `idempotency_key_required`; quantities are bounded (0..10,000,000). Audit: `INVENTORY_REGISTERED`, `INVENTORY_ADJUSTED`, `INVENTORY_THRESHOLD_CHANGED`. A product without a stock record cannot be reserved: register one.
+
+### Reservations `/admin/reservations`
+| Call | Body / query | Result |
+|---|---|---|
+| `GET /admin/reservations` | `page,size,status,paymentStatus UNPAID\|PARTIAL\|PAID,currency,q,productId,customerId,from,to (dates or instants),sort NEWEST\|OLDEST` | page of `{ id, reference, status, paymentStatus, createdAt, contact, lineCount, unitCount, balances[{currency,total,paid,due}] }` |
+| `GET /admin/reservations/{id}` | | detail |
+| `POST /admin/reservations/{id}/accept` | | detail |
+| `POST /admin/reservations/{id}/reject` | `{ reason PRODUCT_UNAVAILABLE\|INCORRECT_PRODUCT_INFO\|QUANTITY_UNAVAILABLE\|CANNOT_FULFILL\|OTHER, note? }` (OTHER needs a note) | detail, stock released |
+| `POST /admin/reservations/{id}/ready` | `{ expiresAt? }` (no hold period is configured: null by default) | detail |
+| `POST /admin/reservations/{id}/collect` | | detail; needs every currency paid (409 `payment_required`); deducts stock |
+| `POST /admin/reservations/{id}/cancel` | `{ reason }` | detail, stock released |
+| `POST /admin/reservations/{id}/notes` | `{ visibility INTERNAL\|CUSTOMER_VISIBLE, body (<= 2000) }` | **201** detail |
+`q` matches the reference (prefix), names, e-mail, phone digits. Detail: `{ id, reference, status, paymentStatus, locale, createdAt, readyAt, expiresAt, customerId, contact, lines[…snapshot…], balances[], pickup{…snapshot…}, terms{ version, acceptedAt }, history[{from,to,reasonCode,reasonNote,at,actor{kind,userId}}],
+notes[{id,visibility,body,at,author}], allowedActions[ACCEPT|REJECT|MARK_READY|COLLECT|CANCEL|ADD_NOTE] }`. Transitions run in one transaction (lock, stock, audit, outbox) and accept an optional `Idempotency-Key`; a transition not allowed from the current status is 409 `invalid_status`. Internal notes never reach customers;
+customer-visible ones appear in the customer's view. Audit: `RESERVATION_ACCEPTED|REJECTED|READY|COLLECTED|CANCELLED`, `RESERVATION_NOTE_ADDED`.
+
+### Payments (cash at pickup)
+| Call | Body / query | Result |
+|---|---|---|
+| `GET /admin/payments` | `page,size,reservationId,currency,method,from,to,reversed,recordedBy` | page of payments (newest received first) |
+| `GET /admin/payments/{id}` | | payment |
+| `POST /admin/reservations/{id}/payments` | `{ amount, currency, method?=CASH_AT_PICKUP, receivedAt?, reference?, note? }` + **required** key | **201** `{ payment, paymentStatus, balances }` |
+| `POST /admin/payments/{id}/reversal` | `{ reason }` + **required** key | `{ payment (reversed:true), paymentStatus, balances }` |
+| `GET /admin/reservations/{id}/payments` | | `{ paymentStatus, balances[], payments[] }` |
+| `GET /admin/reservations/{id}/ledger` | | entries `{ id, type PAYMENT_RECEIVED\|PAYMENT_REVERSAL\|ADJUSTMENT, amount (signed), currency, paymentId, reversesEntryId, reason, at, createdBy, correlationId }`, oldest first |
+| `POST /admin/reservations/{id}/payment-adjustments` | `{ amount (signed), currency, reason }` + **required** key | **201** ledger entry |
+| `GET /admin/reservations/{id}/reconciliation` | | `{ reservationId, consistent, lines[{currency, cachedPaid, ledgerPaid, consistent}] }` |
+A payment settles only its own currency; the reservation is PAID when every currency is settled. Payments, reversals and adjustments are accepted only while the reservation is READY_FOR_PICKUP (409 `invalid_status`). History is append-only: a reversal or adjustment is a NEW entry.
+Codes: 409 `already_paid` (that currency is settled), `already_reversed`; 422 `currency_invalid` (the reservation has no balance in it), `reason_required`, `paid_negative`, `ledger_amount_zero`, `idempotency_key_required`, field issues for amounts (`invalid`, `too_many_decimals`, `must_be_positive`).
+**Open decisions kept as they were:** an over-payment is still accepted (the due amount floors at zero); there is no partial-payment policy; who may record payments is not restricted beyond staff membership. Audit: `PAYMENT_RECORDED|REVERSED|ADJUSTED`.
+
+### Customers `/admin/customers`
+* `GET /admin/customers?page,size,kind REGISTERED|GUEST,q,from,to,sort NEWEST|NAME` -> page of `{ id, kind, firstName, lastName, dialCode, phone, email, hasAccount, createdAt, updatedAt, version, activity{ reservations, firstReservationAt, lastReservationAt }, summary: null }`.
+* `GET /admin/customers/{id}` -> the same with `summary{ reservationsByStatus{…}, collectedByCurrency{HTG,USD}, openDueByCurrency{HTG,USD} }` (per currency, never summed). A customer's reservations: `GET /admin/reservations?customerId=`.
+* `PUT /admin/customers/{id}` body `{ version, firstName, lastName, email? }` -> corrects a GUEST's name and e-mail. The phone (a guest's identity) and the account link are never edited; a registered customer's profile belongs to its owner (422 `customer_managed_by_owner`);
+  reservations keep the contact they were made with. Guests and registered customers are separate records and are never merged. Audit `CUSTOMER_UPDATED` lists the changed field names only.
+
+### Reports `/admin/reports`
+Query: `from`, `to` (`yyyy-MM-dd`, both inclusive; default: the last 30 days), `timezone` (IANA, default `America/Port-au-Prince`); at most 366 days (422 `period_too_long`, `date_range_invalid`). All read-only; every amount is per currency (`{ "HTG": "…", "USD": "…" }`).
+* `GET /admin/reports/overview` -> `{ period, reservationsCreated{status:n}, openNow{PENDING_REVIEW,CONFIRMED,READY_FOR_PICKUP}, collected{cur}, paymentsNet{cur}, stock{ok,low,out,untracked,activeProductsWithoutStockRecord}, activeProducts, newCustomers }`.
+* `GET /admin/reports/sales?groupBy=DAY|WEEK|MONTH` -> `{ period, groupBy, buckets[{ start, collected{cur}, reservations }], totals{cur}, reservations }`; a **sale** is a reservation that was COLLECTED, dated by its collection; empty buckets are included.
+* `GET /admin/reports/payments?groupBy=` -> `{ period, groupBy, buckets[{ start, received, reversed (positive), adjustments (signed), net }], totals }`, from the ledger entry dates.
+* `GET /admin/reports/products?currency=&limit=10` -> `{ period, rows[{ productId, name, sku, currency, quantity, revenue, reservations }] }`, ranked inside each currency by revenue then units, `limit` (1-100) rows per currency; names are the reservation snapshots.
+* `GET /admin/reports/reservations` -> `{ period, byStatus, total, rejectionReasons{code:n} }` (reservations created in the period, by current status).
+* `GET /admin/reports/stock` -> `{ stock{…}, activeProducts }` (now). Not implemented: stock valuation (no cost data exists), average processing times.
+
 ## Concurrency
 Stock: `SELECT ... FOR UPDATE` on the inventory rows in a stable order inside the reservation transaction (ADR 0009); losers get 409 `insufficient_stock` (tested over HTTP with simultaneous requests for the last units across both currencies). Optimistic `version` columns
-guard admin edits (409 `concurrent_update`). Unique constraints back idempotency, SKUs and customer identities.
+guard admin edits (409 `concurrent_update`; tested with simultaneous requests: exactly one wins). Reservation transitions and payments lock the reservation row (`FOR UPDATE`): of simultaneous accept/reject calls exactly one succeeds. Unique constraints back idempotency, SKUs and customer identities.

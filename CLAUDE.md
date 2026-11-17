@@ -44,8 +44,14 @@ SPRING_PROFILES_ACTIVE=local mvn spring-boot:run   # needs SPRING_DATASOURCE_PAS
 - Search is PostgreSQL full-text (`ProductSearchNative` is the ONE native-SQL class, justified in ADR 0015). Product images live in Cloudflare R2 (never Supabase Storage); storage tests use MinIO, which is NOT R2.
 - Secrets (`R2_SECRET_ACCESS_KEY`, DB password) come from the environment only and are never logged or returned; `.env` and `dev/supabase/signing_key.json` are never committed.
 
+## Admin API rules (Phase 2)
+- Staff controllers (`Admin*Controller`) only parse and shape; rules live in `core` (`*AdminService`, `*Draft`, `*Query`). Replacing endpoints require the `version` the caller read (409 `concurrent_update`); stock adjustments and every payment write require an `Idempotency-Key`.
+- Every report/summary figure is **per currency**; never add HTG and USD, not even for a "total". Audit entries never contain personal text (note bodies, names, e-mails): record field names or lengths.
+- New list filters are JPQL (`EntityManager`) except text search, which reuses `ProductSearchNative`. Staff-only figures (`onHand`, `reserved`) never appear in public DTOs.
+- Domain codes that are state conflicts must be added to `GlobalExceptionHandler.CONFLICTS` (409), otherwise they answer 422. The list of staff codes is in `docs/api.md`.
+
 ## Testing
-Integration tests extend `AbstractIntegrationTest` (one shared PostgreSQL container). Create uniquely named data; do not assert global
+Integration tests extend `AbstractIntegrationTest` (one shared PostgreSQL container); staff HTTP tests are in `infra/admin` (`ApiTestSupport`, `newStaffToken()`), check money/counts as DELTAS around the data the test creates. Create uniquely named data; do not assert global
 counts. JWT tests use locally generated keys — they are NOT Supabase integration tests (say so when reporting).
 
 ## Open business decisions — never invent defaults

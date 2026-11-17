@@ -1,5 +1,13 @@
 # Frontend ↔ backend integration map
 
+> **Admin API progress (Phase 2, backend only; `ana-depot-web` untouched).**
+> **Done:** terms acknowledgement persisted (V12); categories; products; inventory; reservations (incl. notes); payments; customers (V13); reports. Details and exact contract: [api.md](api.md#staff-admin-api).
+> **In progress:** nothing.
+> **Next (frontend, not started here):** replace the demo stores in `src/lib/api/{catalog-admin,reservations}.ts` by calls to the endpoints above; wire the admin screens.
+> **Known gaps for the frontend** (no backend counterpart, nothing invented): product `featuredRank` / `isNew`; the web `Money` is integer minor units while the API uses decimal strings; the web variant editor may define product-specific options, the API requires category variant axes;
+> customer cancel button (`canCancel` stays false); web "status" actions on payments before READY (the API accepts payments only while READY_FOR_PICKUP); the web inventory screen shows one stock number, the API exposes `onHand/reserved/available`;
+> reports: no stock valuation (no cost data), no processing-time averages; a reservation's customer-visible note is the only message the customer sees (no notifications channel decided).
+
 Written at the start of Phase 3 from the **actual code** of both projects (not only their docs). It maps every frontend feature to the backend capability that must
 serve it, so that nothing is built twice. Legend for the *Backend status* column:
 
@@ -96,7 +104,7 @@ The frontend today (`ana-depot-web`): real Supabase Auth (cookie session, `GET /
 9. Frontend category `moveUp/moveDown` ordering ⇒ `display_order` exists; a reorder endpoint is a trivial admin write.
 
 ## 7. Progress notes (for resuming; update as work packages finish)
-Migration numbering used: V6 store_settings, V7 catalog_search, V8 catalog_fulltext_search, V9 customer accounts, V10 product image object key, V11 Data-API lockdown (numbered LAST so it covers every table).
+Migration numbering used: V12 reservation terms, V13 customer version, V6 store_settings, V7 catalog_search, V8 catalog_fulltext_search, V9 customer accounts, V10 product image object key, V11 Data-API lockdown (numbered LAST so it covers every table).
 | WP | State |
 |---|---|
 | 0 integration map | done (this file) |
@@ -109,5 +117,5 @@ Migration numbering used: V6 store_settings, V7 catalog_search, V8 catalog_fullt
 | Addendum B Cloudflare R2 | done + tested against MinIO (S3-compatible, NOT real R2): adapter, staff image endpoints (V10), scheduled cleanup, outbox event, docs/storage-r2.md, ADR 0014. **Real-R2 verification PENDING** (opt-in `R2RealIntegrationTest`) |
 | Addendum C docs correction (Supabase Storage -> R2) | done: ADR 0007, README, storage-r2.md, supabase-database.md state that Supabase Storage is deliberately not used |
 
-Remaining differences between the storefront and the API (decisions or work, not hidden): no customer cancel endpoint (policy undecided; `canCancel` is always false); no staff reservation/payment/product/stock management endpoints yet (use cases exist in `core`);
-line snapshots carry no image/slug (the frontend loads the product by id while it is still published); `acknowledgedTerms` is validated but not stored; the public domain for images is not chosen.
+Remaining differences between the storefront and the API (decisions or work, not hidden): no customer cancel endpoint (policy undecided; `canCancel` is always false); the staff management endpoints exist (Phase 2) but the web admin does not call them yet;
+line snapshots carry no image/slug (the frontend loads the product by id while it is still published); `acknowledgedTerms` is validated and now stored (version + time); the public domain for images is not chosen.

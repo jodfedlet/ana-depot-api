@@ -36,10 +36,12 @@ class ReservationController {
 
 	private final ReservationService reservations;
 	private final RateLimiter limiter;
+	private final com.anadepot.infra.config.AnaProperties properties;
 
-	ReservationController(ReservationService reservations, RateLimiter limiter) {
+	ReservationController(ReservationService reservations, RateLimiter limiter, com.anadepot.infra.config.AnaProperties properties) {
 		this.reservations = reservations;
 		this.limiter = limiter;
+		this.properties = properties;
 	}
 
 	/** {@code Idempotency-Key} is REQUIRED: a customer on a poor connection retries, and must never create two reservations. */
@@ -49,7 +51,7 @@ class ReservationController {
 		if (idempotencyKey == null || idempotencyKey.isBlank()) {
 			throw new DomainRuleViolation("idempotency_key_required", "The Idempotency-Key header is required to create a reservation");
 		}
-		var command = ReservationRequests.toCommand(body, Actors.customerOrGuest(authentication), idempotencyKey);
+		var command = ReservationRequests.toCommand(body, Actors.customerOrGuest(authentication), idempotencyKey).withTermsVersion(properties.legal().termsVersion());
 		return ResponseEntity.status(HttpStatus.CREATED).body(CustomerReservationView.of(reservations.submit(command)));
 	}
 

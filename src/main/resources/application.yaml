@@ -54,6 +54,8 @@ springdoc:
 
 # Operational limits and external configuration (see docs/auth.md and docs/adr).
 ana:
+  legal:
+    terms-version: ${ANA_TERMS_VERSION:}                 # label of the reservation terms in force; the legal TEXT is supplied separately by the business
   security:
     supabase-url: ${SUPABASE_URL:}                       # project URL; the issuer defaults to <supabase-url>/auth/v1 when SUPABASE_JWT_ISSUER is empty
     jwt-issuer: ${SUPABASE_JWT_ISSUER:}                 # e.g. https://<project-ref>.supabase.co/auth/v1 ; with supabase-url also empty = every token is rejected

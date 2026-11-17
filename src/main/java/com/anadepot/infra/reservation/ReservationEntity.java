@@ -38,6 +38,8 @@ class ReservationEntity {
 	String pickupSnapshot;
 	Instant readyAt;
 	Instant expiresAt;
+	String termsVersion;
+	Instant termsAcceptedAt;
 	Instant createdAt;
 	Instant updatedAt;
 	@Version

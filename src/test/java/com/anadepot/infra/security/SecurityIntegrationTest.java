@@ -189,7 +189,7 @@ class SecurityIntegrationTest extends AbstractIntegrationTest {
 	@Test
 	void noTokenSurvivesWhenAuthenticationIsNotConfigured() {
 		// the production decoder with no issuer configured rejects everything (fail closed)
-		var decoder = new SecurityConfig().jwtDecoder(new com.anadepot.infra.config.AnaProperties(null, null, null, new com.anadepot.infra.config.AnaProperties.Security(null, null, null, "authenticated", null), null, null));
+		var decoder = new SecurityConfig().jwtDecoder(new com.anadepot.infra.config.AnaProperties(null, null, null, new com.anadepot.infra.config.AnaProperties.Security(null, null, null, "authenticated", null), null, null, null));
 		org.assertj.core.api.Assertions.assertThatThrownBy(() -> decoder.decode(valid(UUID.randomUUID()))).isInstanceOf(org.springframework.security.oauth2.jwt.BadJwtException.class);
 		assertThat(decoder).isNotNull();
 	}

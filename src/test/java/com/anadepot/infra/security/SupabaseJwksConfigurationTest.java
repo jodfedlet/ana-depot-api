@@ -110,7 +110,7 @@ class SupabaseJwksConfigurationTest {
 
 	@Test
 	void theProductionDecoderIsBuiltFromTheDerivedIssuerAndTheOverride() throws Exception {
-		var props = new AnaProperties(null, null, null, new AnaProperties.Security("https://project-ref.supabase.co", null, jwksUrl, "authenticated", null), null, null);
+		var props = new AnaProperties(null, null, null, new AnaProperties.Security("https://project-ref.supabase.co", null, jwksUrl, "authenticated", null), null, null, null);
 		var decoder = new SecurityConfig().jwtDecoder(props);
 		assertThat(decoder.decode(token(trusted, ISSUER)).getIssuer().toString()).isEqualTo(ISSUER);
 	}

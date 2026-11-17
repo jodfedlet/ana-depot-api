@@ -92,6 +92,8 @@ class ReservationRepositoryAdapter implements ReservationRepository {
 		e.contactPhone = r.contact().phone();
 		e.contactEmail = r.contact().email();
 		e.pickupSnapshot = r.pickupSnapshotJson();
+		e.termsVersion = r.termsVersion();
+		e.termsAcceptedAt = r.termsAcceptedAt();
 		e.createdAt = r.createdAt();
 		for (var total : r.totals().amounts()) {
 			var t = new ReservationTotalEntity();
@@ -167,6 +169,8 @@ class ReservationRepositoryAdapter implements ReservationRepository {
 		List<StatusChange> history = e.history.stream().map(h -> new StatusChange(h.fromStatus, h.toStatus, h.reasonCode, h.reasonNote, h.changedAt, new Actor(h.actorKind, h.actorUserId))).toList();
 		List<ReservationNote> notes = e.notes.stream().map(n -> new ReservationNote(n.id, n.visibility, n.body, n.createdAt, new Actor(n.authorKind, n.authorUserId))).toList();
 		var contact = new Contact(e.contactFirstName, e.contactLastName, e.contactDialCode, e.contactPhone, e.contactEmail);
-		return new Reservation(e.id, e.reference, e.locale, contact, e.customerId, lines, totals, paid, e.pickupSnapshot, e.createdAt, e.status, e.readyAt, e.expiresAt, history, notes);
+		var restored = new Reservation(e.id, e.reference, e.locale, contact, e.customerId, lines, totals, paid, e.pickupSnapshot, e.createdAt, e.status, e.readyAt, e.expiresAt, history, notes);
+		restored.restoreTerms(e.termsVersion, e.termsAcceptedAt);
+		return restored;
 	}
 }

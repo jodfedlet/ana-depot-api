@@ -40,6 +40,8 @@ public final class Reservation {
 	private CurrencyTotals paid;
 	private Instant readyAt;
 	private Instant expiresAt;
+	private String termsVersion;
+	private Instant termsAcceptedAt;
 	private final List<StatusChange> history;
 	private final List<ReservationNote> notes;
 
@@ -81,6 +83,21 @@ public final class Reservation {
 		return new Reservation(id, reference, locale, contact, customerId, lines, totals, CurrencyTotals.empty(), pickupSnapshotJson, now,
 				ReservationStatus.PENDING_REVIEW, null, null, List.of(created), List.of());
 	}
+
+	/** Records that the customer accepted the terms at {@code at}; {@code version} is the configured terms version (null when none is configured). Set once, at submission. */
+	public void acknowledgeTerms(String version, Instant at) {
+		this.termsVersion = version == null || version.isBlank() ? null : version.strip();
+		this.termsAcceptedAt = at;
+	}
+
+	/** Restores what was persisted (adapter only). */
+	public void restoreTerms(String version, Instant at) {
+		this.termsVersion = version;
+		this.termsAcceptedAt = at;
+	}
+
+	public String termsVersion() { return termsVersion; }
+	public Instant termsAcceptedAt() { return termsAcceptedAt; }
 
 	// ---- lifecycle -------------------------------------------------------------------------------------------
 

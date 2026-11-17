@@ -118,7 +118,9 @@ public class ReservationServiceImpl implements ReservationService {
 		}
 		var contact = cmd.contact();
 		var customer = customerOf(cmd.actor(), contact, now);
-		var reservation = reservations.save(Reservation.submit(UUID.randomUUID(), newReference(), cmd.locale(), contact, customer.id(), lines, pickupSnapshot, now));
+		var submitted = Reservation.submit(UUID.randomUUID(), newReference(), cmd.locale(), contact, customer.id(), lines, pickupSnapshot, now);
+		submitted.acknowledgeTerms(cmd.termsVersion(), now);   // the terms were accepted by submitting (the REST layer refuses a request without acknowledgement)
+		var reservation = reservations.save(submitted);
 		record(reservation, "reservation.submitted", "RESERVATION_SUBMITTED", cmd.actor() == null ? Actor.guest() : cmd.actor(), null, null);
 		return reservation;
 	}

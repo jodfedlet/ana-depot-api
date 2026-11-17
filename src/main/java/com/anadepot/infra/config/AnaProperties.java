@@ -14,7 +14,16 @@ public record AnaProperties(
 		@DefaultValue RateLimit rateLimit,
 		@DefaultValue Security security,
 		@DefaultValue Upload upload,
-		@DefaultValue Storage storage) {
+		@DefaultValue Storage storage,
+		@DefaultValue Legal legal) {
+
+	/**
+	 * {@code termsVersion}: label of the reservation terms currently in force (for example a date or a number the business assigns). The legal text is supplied
+	 * separately and is NOT part of this application. Optional: when empty, reservations still record WHEN the terms were accepted but no version.
+	 */
+	public record Legal(String termsVersion) {
+	}
+
 
 	public record Idempotency(@DefaultValue("P7D") Duration retention, @DefaultValue("PT1H") Duration cleanupInterval) {
 	}

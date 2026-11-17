@@ -10,7 +10,6 @@ import com.anadepot.core.shared.PageRequest;
 import com.anadepot.core.shared.money.SupportedCurrency;
 import com.anadepot.infra.security.Actors;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,8 +41,8 @@ class AdminProductController {
 	ProductDtos.PageResponse<AdminProductDtos.Summary> list(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, @RequestParam(required = false) String q,
 			@RequestParam(required = false) String status, @RequestParam(required = false) UUID categoryId, @RequestParam(required = false) String brand,
 			@RequestParam(required = false) String currency, @RequestParam(required = false) String stock, @RequestParam(required = false) String sort) {
-		var query = new AdminProductQuery(SearchQuery.of(q), enumOf(ProductStatus.class, status, "status"), categoryId, brand, enumOf(SupportedCurrency.class, currency, "currency"),
-				enumOf(AdminProductQuery.StockFilter.class, stock, "stock"), enumOf(AdminProductQuery.Sort.class, sort, "sort"));
+		var query = new AdminProductQuery(SearchQuery.of(q), com.anadepot.infra.web.QueryParams.enumOf(ProductStatus.class, status, "status"), categoryId, brand, com.anadepot.infra.web.QueryParams.enumOf(SupportedCurrency.class, currency, "currency"),
+				com.anadepot.infra.web.QueryParams.enumOf(AdminProductQuery.StockFilter.class, stock, "stock"), com.anadepot.infra.web.QueryParams.enumOf(AdminProductQuery.Sort.class, sort, "sort"));
 		var result = products.list(query, new PageRequest(page, size));
 		return new ProductDtos.PageResponse<>(result.items().stream().map(AdminProductDtos::summary).toList(), result.page(), result.size(), result.totalItems(), result.totalPages());
 	}
@@ -75,7 +74,7 @@ class AdminProductController {
 		if (body.reason() != null && body.reason().length() > 500) {
 			throw new FieldValidationException(List.of(new FieldIssue("reason", "too_long")));
 		}
-		var status = enumOf(ProductStatus.class, body.status(), "status");
+		var status = com.anadepot.infra.web.QueryParams.enumOf(ProductStatus.class, body.status(), "status");
 		return AdminProductDtos.detail(products.setStatus(id, status, body.reason(), Actors.staff(authentication)));
 	}
 
@@ -90,16 +89,5 @@ class AdminProductController {
 			throw new FieldValidationException(List.of(new FieldIssue("body", "required")));
 		}
 		return body.toDraft();
-	}
-
-	private static <E extends Enum<E>> E enumOf(Class<E> type, String value, String field) {
-		if (value == null || value.isBlank()) {
-			return null;
-		}
-		try {
-			return Enum.valueOf(type, value.strip().toUpperCase(Locale.ROOT));
-		} catch (IllegalArgumentException e) {
-			throw new FieldValidationException(List.of(new FieldIssue(field, "invalid")));
-		}
 	}
 }

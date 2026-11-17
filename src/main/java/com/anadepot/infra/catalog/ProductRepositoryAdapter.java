@@ -91,6 +91,15 @@ class ProductRepositoryAdapter implements ProductRepository {
 	}
 
 	@Override
+	public java.util.Map<UUID, Product> findAllById(java.util.Collection<UUID> ids) {
+		var result = new java.util.HashMap<UUID, Product>();
+		if (!ids.isEmpty()) {
+			products.findAllById(ids).forEach(e -> result.put(e.id, CatalogMapper.toDomain(e)));
+		}
+		return result;
+	}
+
+	@Override
 	public Optional<Product> findById(UUID id) {
 		return products.findById(id).map(CatalogMapper::toDomain);
 	}

@@ -6,5 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 interface InventoryMovementJpaRepository extends JpaRepository<InventoryMovementEntity, UUID> {
 
+	org.springframework.data.domain.Page<InventoryMovementEntity> findByInventoryItemId(UUID inventoryItemId, org.springframework.data.domain.Pageable pageable);
+
 	List<InventoryMovementEntity> findByInventoryItemIdOrderByCreatedAtAscIdAsc(UUID inventoryItemId);
 }

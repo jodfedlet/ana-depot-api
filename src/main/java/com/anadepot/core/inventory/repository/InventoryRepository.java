@@ -22,6 +22,19 @@ public interface InventoryRepository {
 	/** Every stock position of the given products (product-level and variant-level) in one query. */
 	java.util.Map<UUID, List<InventoryItem>> findAllForProducts(java.util.Collection<UUID> productIds);
 
+	Optional<InventoryItem> findById(UUID id);
+
+	record Meta(long version, java.time.Instant createdAt, java.time.Instant updatedAt) {
+	}
+
+	Optional<Meta> meta(UUID id);
+
+	/** Staff listing of stock positions (see {@link com.anadepot.core.inventory.model.InventoryQuery}). */
+	com.anadepot.core.shared.PageResult<InventoryItem> findPage(com.anadepot.core.inventory.model.InventoryQuery query, com.anadepot.core.shared.PageRequest page);
+
+	/** The movements of one stock position, newest first. */
+	com.anadepot.core.shared.PageResult<StockMovement> movementsPage(UUID inventoryItemId, com.anadepot.core.shared.PageRequest page);
+
 	StockMovement saveMovement(StockMovement movement);
 
 	List<StockMovement> movements(UUID inventoryItemId);

@@ -16,6 +16,9 @@ public interface ProductRepository {
 
 	Optional<Product> findById(UUID id);
 
+	/** Several products in one query, by id (unknown ids are simply absent). */
+	java.util.Map<UUID, Product> findAllById(java.util.Collection<UUID> ids);
+
 	boolean skuInUse(String sku, UUID exceptProductId);
 
 	PageResult<Product> findPage(PageRequest request, ProductStatus statusOrNull);

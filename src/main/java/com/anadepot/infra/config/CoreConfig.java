@@ -61,6 +61,12 @@ class CoreConfig {
 	}
 
 	@Bean
+	com.anadepot.core.inventory.service.InventoryAdminService inventoryAdminService(com.anadepot.core.inventory.repository.InventoryRepository inventoryRepository, InventoryService inventory,
+			ProductRepository products, AuditRecorder audit, TransactionBoundary tx) {
+		return new com.anadepot.core.inventory.serviceImpl.InventoryAdminServiceImpl(inventoryRepository, inventory, products, audit, tx);
+	}
+
+	@Bean
 	InventoryService inventoryService(InventoryRepository inventory, TransactionBoundary tx, Clock clock, AuditRecorder audit, DomainEventRecorder events, IdempotencyService idempotency) {
 		return new InventoryServiceImpl(inventory, tx, clock, audit, events, idempotency);
 	}

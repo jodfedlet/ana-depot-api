@@ -30,12 +30,22 @@ import org.springframework.web.bind.annotation.RestController;
 class OnlinePaymentController {
 
 	private final OnlinePaymentService online;
+	private final com.anadepot.core.settings.service.StoreSettingsService settings;
 
-	OnlinePaymentController(OnlinePaymentService online) {
+	OnlinePaymentController(OnlinePaymentService online, com.anadepot.core.settings.service.StoreSettingsService settings) {
 		this.online = online;
+		this.settings = settings;
 	}
 
-	record Options(OnlineOption online) {
+	/**
+	 * What payment options exist RIGHT NOW, decided by the backend (never by frontend configuration). {@code online}: the hosted card option, present only when AVAILABLE (kept for older
+	 * clients). {@code onlineStatus}: AVAILABLE | DISABLED (switched off, or the account cannot charge any configured currency) | TEMPORARILY_UNAVAILABLE (switched on, provider not reachable).
+	 * {@code atPickup.available}: reservations are open, so paying at pickup works. {@code summary}: BOTH | PICKUP_ONLY | NONE (NONE = reservations are closed, so nothing can be paid).
+	 */
+	record Options(OnlineOption online, String onlineStatus, AtPickup atPickup, String summary) {
+	}
+
+	record AtPickup(boolean available) {
 	}
 
 	record OnlineOption(String provider, List<String> currencies) {
@@ -71,8 +81,11 @@ class OnlinePaymentController {
 
 	@GetMapping("/api/v1/store/payment-options")
 	Options options() {
-		var currencies = online.availableCurrencies().stream().map(Enum::name).sorted().toList();
-		return new Options(currencies.isEmpty() ? null : new OnlineOption("STRIPE", currencies));
+		var availability = online.availability();
+		var currencies = availability == com.anadepot.core.payment.service.CheckoutGateway.Availability.AVAILABLE ? online.availableCurrencies().stream().map(Enum::name).sorted().toList() : List.<String>of();
+		var pickup = settings.getPickup().availability() == com.anadepot.core.settings.model.PickupSettings.Availability.AVAILABLE;
+		var summary = !pickup ? "NONE" : currencies.isEmpty() ? "PICKUP_ONLY" : "BOTH";
+		return new Options(currencies.isEmpty() ? null : new OnlineOption("STRIPE", currencies), availability.name(), new AtPickup(pickup), summary);
 	}
 
 	@PostMapping("/api/v1/reservations/{reference}/payments/checkout-session")

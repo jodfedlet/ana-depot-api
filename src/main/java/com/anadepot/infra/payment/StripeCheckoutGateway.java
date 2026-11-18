@@ -40,7 +40,7 @@ class StripeCheckoutGateway implements CheckoutGateway {
 	private final Set<SupportedCurrency> configured;
 	private final AtomicReference<Cached> eligibility = new AtomicReference<>();
 
-	private record Cached(Set<SupportedCurrency> currencies, Instant until) {
+	private record Cached(Set<SupportedCurrency> currencies, Instant until, boolean failed) {
 	}
 
 	StripeCheckoutGateway(StripeProperties properties, Clock clock) {
@@ -114,6 +114,19 @@ class StripeCheckoutGateway implements CheckoutGateway {
 	}
 
 	@Override
+	public Availability availability() {
+		if (client == null) {
+			return Availability.DISABLED;
+		}
+		var offered = eligibleCurrencies();   // fills (or reuses) the cache, including the failure flag
+		var cached = eligibility.get();
+		if (!offered.isEmpty()) {
+			return Availability.AVAILABLE;
+		}
+		return cached != null && cached.failed() ? Availability.TEMPORARILY_UNAVAILABLE : Availability.DISABLED;
+	}
+
+	@Override
 	public Set<SupportedCurrency> eligibleCurrencies() {
 		if (client == null) {
 			return Set.of();
@@ -136,11 +149,11 @@ class StripeCheckoutGateway implements CheckoutGateway {
 					log.warn("Stripe: {} is configured but not supported for the connected account's country; online payment stays off for it", c);
 				}
 			}
-			eligibility.set(new Cached(Set.copyOf(result), now.plus(POSITIVE_CACHE)));
+			eligibility.set(new Cached(Set.copyOf(result), now.plus(POSITIVE_CACHE), false));
 			return Set.copyOf(result);
 		} catch (StripeException | RuntimeException e) {
 			log.warn("Stripe: currency eligibility could not be checked ({}); online payment is offered in no currency", e.getClass().getSimpleName());
-			eligibility.set(new Cached(Set.of(), now.plus(NEGATIVE_CACHE)));
+			eligibility.set(new Cached(Set.of(), now.plus(NEGATIVE_CACHE), true));
 			return Set.of();
 		}
 	}

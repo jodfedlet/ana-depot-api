@@ -19,6 +19,16 @@ public interface CheckoutGateway {
 	/** Currencies that are configured AND that the provider account can actually charge. Empty when unsure (fail closed). */
 	Set<SupportedCurrency> eligibleCurrencies();
 
+	/** What customers may rely on right now. {@code TEMPORARILY_UNAVAILABLE}: switched on, but the provider could not be asked (no currency is offered until it can). */
+	enum Availability { DISABLED, AVAILABLE, TEMPORARILY_UNAVAILABLE }
+
+	default Availability availability() {
+		if (!enabled()) {
+			return Availability.DISABLED;
+		}
+		return eligibleCurrencies().isEmpty() ? Availability.DISABLED : Availability.AVAILABLE;
+	}
+
 	/** The smallest charge the provider accepts in this currency, when known. */
 	Optional<Money> minimumCharge(SupportedCurrency currency);
 

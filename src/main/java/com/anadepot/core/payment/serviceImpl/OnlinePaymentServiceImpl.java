@@ -63,6 +63,11 @@ public class OnlinePaymentServiceImpl implements OnlinePaymentService {
 	}
 
 	@Override
+	public CheckoutGateway.Availability availability() {
+		return gateway.availability();
+	}
+
+	@Override
 	public Set<SupportedCurrency> availableCurrencies() {
 		return gateway.enabled() ? gateway.eligibleCurrencies() : Set.of();
 	}

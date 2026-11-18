@@ -17,6 +17,9 @@ public interface OnlinePaymentService {
 	/** Currencies a customer may pay online right now (empty when the integration is off or no currency passed the provider check). */
 	Set<SupportedCurrency> availableCurrencies();
 
+	/** Online payment as customers may rely on it now: AVAILABLE only with at least one currency the provider account can really charge. */
+	CheckoutGateway.Availability availability();
+
 	/**
 	 * Opens (or returns the open) hosted checkout for the FULL due amount of one currency. {@code access} proves the caller owns the reservation.
 	 * Needs an idempotency key. The amount is computed here from the ledger, never supplied by the caller.

@@ -38,7 +38,16 @@ Stripe enabled without the key, the webhook secret, a valid return base URL or a
 All amounts are decimal strings per currency; HTG and USD are never combined.
 
 ### `GET /api/v1/store/payment-options` (public)
-`{ "online": { "provider": "STRIPE", "currencies": ["USD"] } }` or `{ "online": null }` when Stripe is disabled or no currency is eligible. `currencies` only lists currencies that passed the eligibility check. Cached briefly server-side.
+The BACKEND's statement of what can be paid right now; the storefront derives every payment sentence from it (never from a build flag, never from the presence of checkout code).
+```json
+{ "online": { "provider": "STRIPE", "currencies": ["USD"] },      // null unless AVAILABLE (kept for older clients)
+  "onlineStatus": "AVAILABLE",                                     // AVAILABLE | DISABLED | TEMPORARILY_UNAVAILABLE
+  "atPickup": { "available": true },
+  "summary": "BOTH" }                                              // BOTH | PICKUP_ONLY | NONE
+```
+* `onlineStatus`: **AVAILABLE** = switched on AND the connected account can charge at least one configured currency; **DISABLED** = switched off, or on but the account supports none of the configured currencies (never offered because "the code exists"); **TEMPORARILY_UNAVAILABLE** = switched on but the provider could not be asked (eligibility is re-checked after a minute; no currency is offered meanwhile).
+* `atPickup.available`: pickup is enabled and configured, i.e. reservations are open, so paying at pickup works. `summary`: **BOTH** = card + pickup; **PICKUP_ONLY** = card off/unreachable; **NONE** = reservations are closed, so nothing can be paid.
+* `currencies` only lists currencies that passed the eligibility check. Eligibility is cached briefly server-side (10 minutes when known, 1 minute after a failure).
 
 ### `POST /api/v1/reservations/{reference}/payments/checkout-session`
 Header `Idempotency-Key` **required**. Body `{ "currency": "USD", "phone": "…" }` (`phone` required for guests, ignored for the signed-in owner, who sends the bearer token). Authorization = the existing lookup rule: reference + phone, or the owning signed-in customer. Unknown reference, wrong phone and foreign reservation are the same `404 reservation_not_found`.
@@ -103,3 +112,19 @@ Run the local fake stack: `node dev/fake-stripe.mjs` (set `FAKE_STRIPE_WEBHOOK_U
 ## Refunds and unresolved decisions
 
 No refund exists: there is no approved refund policy, so there is no refund endpoint and no refund button. A ledger reversal of a Stripe payment is refused because it would not return money. Open: refund policy, prepayment before READY_FOR_PICKUP, partial online payment, overpayment policy, what a customer sees when the store cancels a reservation that was paid online (the payment stays on the ledger and the attempt is flagged for a human).
+
+## Actual behaviour today (so nobody is surprised) and the decision behind each
+| Topic | What the code does | Decision |
+|---|---|---|
+| Partial payment, online | Not possible: a Checkout Session always asks for the **full current due of one currency**. | D2 |
+| Partial payment, cash | Allowed: staff record any positive amount in a currency of the reservation. | D2 |
+| Overpayment, cash | Accepted: due floors at 0, the recorded amount is kept; nothing says what happens to the extra. Online: impossible (amount fixed by the backend). | D3 |
+| Payment before READY_FOR_PICKUP | Online checkout is refused (`invalid_status`) until the reservation is READY_FOR_PICKUP; staff cash recording has the same limit. | D4 |
+| After rejection or cancellation | No new checkout (not READY). If a session was already open and the customer pays anyway, the verified money is **always posted** to the ledger and the attempt is flagged `requires_attention` (never lost, never auto-refunded). | D1 |
+| Refund | None. A Stripe payment cannot be reversed in the application (`409 online_payment_reversal_unsupported`); the owner refunds in the Stripe dashboard. | D1 |
+| Reservation expiry | Nothing expires automatically; an expired Checkout Session never cancels a reservation. | D6 |
+| Webhook delayed or out of order | `SUCCEEDED` always wins over `FAILED`/`EXPIRED`; a late success is still posted; a duplicate event id or a repeated payment intent is posted once. | n/a (tested) |
+| What the customer sees | Per-currency balances and a payment history (currency, amount, method, date, reversed flag). Returning from Stripe proves nothing: status comes from the backend, which only changes on a verified webhook. | n/a |
+| What staff see | Payments with a Stripe/cash badge, attempts (including failed ones and `requires_attention`), per-reservation reconciliation (cached paid vs ledger), and the payments report split by method and currency. | n/a |
+
+All of these use the local fake Stripe or the mocked gateway: MOCKED/LOCAL evidence, never hosted Stripe verification. The decisions are in [decisions.md](decisions.md).

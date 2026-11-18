@@ -52,12 +52,14 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 	/** A deterministic stand-in for the provider: enabled/eligibility are switchable, sessions are idempotent per attempt like Stripe's. */
 	static class FakeGateway implements CheckoutGateway {
 		volatile boolean enabled = true;
+		volatile boolean providerDown = false;   // switched on, but the provider cannot be asked
 		volatile Set<SupportedCurrency> eligible = Set.of(SupportedCurrency.USD);
 		final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
 		final AtomicInteger calls = new AtomicInteger();
 
 		@Override public boolean enabled() { return enabled; }
-		@Override public Set<SupportedCurrency> eligibleCurrencies() { return eligible; }
+		@Override public Set<SupportedCurrency> eligibleCurrencies() { return providerDown ? Set.of() : eligible; }
+		@Override public Availability availability() { return !enabled ? Availability.DISABLED : providerDown ? Availability.TEMPORARILY_UNAVAILABLE : CheckoutGateway.super.availability(); }
 		@Override public Optional<Money> minimumCharge(SupportedCurrency c) { return c == SupportedCurrency.USD ? Optional.of(Money.of("0.50", c)) : Optional.empty(); }
 		@Override public Session createSession(Request r) {
 			calls.incrementAndGet();
@@ -78,6 +80,7 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 	@BeforeEach
 	void setUp() {
 		gateway.enabled = true;
+		gateway.providerDown = false;
 		gateway.eligible = Set.of(SupportedCurrency.USD);
 		gateway.sessions.clear();
 		gateway.calls.set(0);
@@ -154,6 +157,57 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 		get("/api/v1/store/payment-options", null).andExpect(status().isOk()).andExpect(jsonPath("$.online").doesNotExist());
 		gateway.enabled = false;
 		get("/api/v1/store/payment-options", null).andExpect(status().isOk()).andExpect(jsonPath("$.online").doesNotExist());
+	}
+
+	private JsonNode options() throws Exception {
+		return JSON.readTree(get("/api/v1/store/payment-options", null).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+	}
+
+	@Test
+	void theBackendStatesWhichPaymentOptionsExistRightNow() throws Exception {
+		// both: Stripe available and pickup open
+		var both = options();
+		assertThat(both.get("onlineStatus").asString()).isEqualTo("AVAILABLE");
+		assertThat(both.get("atPickup").get("available").asBoolean()).isTrue();
+		assertThat(both.get("summary").asString()).isEqualTo("BOTH");
+		assertThat(both.get("online").get("currencies").get(0).asString()).isEqualTo("USD");
+
+		// Stripe switched off: only pay at pickup, and nothing online is advertised
+		gateway.enabled = false;
+		var off = options();
+		assertThat(off.get("onlineStatus").asString()).isEqualTo("DISABLED");
+		assertThat(off.get("summary").asString()).isEqualTo("PICKUP_ONLY");
+		assertThat(off.has("online") && !off.get("online").isNull()).isFalse();
+
+		// switched on, but the account can charge none of the configured currencies: not offered (DISABLED), never "available because the code exists"
+		gateway.enabled = true;
+		gateway.eligible = Set.of();
+		var none = options();
+		assertThat(none.get("onlineStatus").asString()).isEqualTo("DISABLED");
+		assertThat(none.get("summary").asString()).isEqualTo("PICKUP_ONLY");
+
+		// switched on, provider unreachable: temporarily unavailable, still no online option, pay at pickup untouched
+		gateway.eligible = Set.of(SupportedCurrency.USD);
+		gateway.providerDown = true;
+		var down = options();
+		assertThat(down.get("onlineStatus").asString()).isEqualTo("TEMPORARILY_UNAVAILABLE");
+		assertThat(down.get("summary").asString()).isEqualTo("PICKUP_ONLY");
+		assertThat(down.has("online") && !down.get("online").isNull()).isFalse();
+		assertThat(down.get("atPickup").get("available").asBoolean()).isTrue();
+	}
+
+	@Test
+	void whenPickupIsClosedNoPaymentMethodIsAvailableWhateverStripeSays() throws Exception {
+		var current = storeSettings.getPickup();
+		storeSettings.savePickup(com.anadepot.testsupport.TestData.testPickup(false), current.version(), staff);
+		try {
+			var closed = options();
+			assertThat(closed.get("atPickup").get("available").asBoolean()).isFalse();
+			assertThat(closed.get("summary").asString()).isEqualTo("NONE");
+			assertThat(closed.get("onlineStatus").asString()).isEqualTo("AVAILABLE");   // reported as it is; the summary is what customers act on
+		} finally {
+			ensurePickupAvailable();
+		}
 	}
 
 	@Test

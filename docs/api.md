@@ -26,10 +26,12 @@ DTOs are separate from JPA entities and from domain objects. Search specifics: [
 | `GET /api/v1/store/pickup` | public | none | pickup availability and details |
 | `POST /api/v1/reservations` | public (token optional) | `reservation.submit` | create a reservation (**Idempotency-Key required**) |
 | `POST /api/v1/reservations/lookup` | public | `reservation.lookup` + `reservation.lookup.reference` | find a reservation by reference + phone |
-| `GET /api/v1/me` | any token | `account.read` | who am I (identity, `staff`, `customerProfileId`) |
+| `GET /api/v1/me` | any token | `account.read` | who am I (identity, `staff`, `mfaRequired`, `customerProfileId`) |
+| `POST /api/v1/me/staff-invitation` | any token | `staff.accept` (5 / 10 min) | redeem a one-time team invitation code |
 | `GET /api/v1/me/profile`, `PUT /api/v1/me/profile` | any token | `account.read` / `account.write` | own customer profile |
 | `GET /api/v1/me/reservations`, `GET /api/v1/me/reservations/{id}` | any token | `account.read` | own reservations only |
 | `GET /api/v1/admin/settings/pickup`, `PUT /api/v1/admin/settings/pickup` | staff | `admin.write` (PUT) | pickup configuration |
+| `/api/v1/admin/staff` (GET, PUT `/{userId}`), `/api/v1/admin/staff/invitations` (GET, POST, DELETE `/{id}`) | staff | `admin.write` (writes) | team members and one-time invitations (see "Team") |
 | `POST /api/v1/admin/catalog/search/reindex` | staff | `admin.reindex` | rebuild the search index |
 | `POST /api/v1/admin/products/{id}/images/uploads` | staff | `upload.request` | request an image upload ticket |
 | `POST /api/v1/admin/products/{id}/images/uploads/{uploadId}/complete` | staff | `admin.write` | verify the upload and attach the image |
@@ -39,7 +41,7 @@ DTOs are separate from JPA entities and from domain objects. Search specifics: [
 | `/api/v1/admin/inventory` ... (6 endpoints) | staff | `admin.write` (writes) | stock positions, adjustments, movements |
 | `/api/v1/admin/reservations` ... (9 endpoints) | staff | `admin.write` (writes) | reservation list, detail, lifecycle, notes |
 | `/api/v1/admin/payments`, `.../reservations/{id}/payments|ledger|payment-adjustments|reconciliation` (8 endpoints) | staff | `admin.write` (writes) | payments, reversals, adjustments, ledger |
-| `GET /api/v1/store/payment-options` | public | `catalog.read` | currencies payable online right now (`online: null` when Stripe is off), see docs/payments-stripe.md |
+| `GET /api/v1/store/payment-options` | public | `catalog.read` | what can be paid right now: `online` (null unless available), `onlineStatus` AVAILABLE/DISABLED/TEMPORARILY_UNAVAILABLE, `atPickup.available`, `summary` BOTH/PICKUP_ONLY/NONE; see docs/payments-stripe.md |
 | `POST /api/v1/reservations/{reference}/payments/checkout-session` | public (reference + phone, or the owner's token) | `payment.checkout` | opens a Stripe-hosted checkout for ONE currency (`Idempotency-Key` required) |
 | `POST /api/v1/reservations/{reference}/payments/status` | public (same proof) | `payment.status` | real payment state from the database, never from the browser |
 | `POST /api/v1/webhooks/stripe` | Stripe signature | `webhook.receive` | verified Stripe events post money to the ledger |
@@ -168,6 +170,8 @@ variants (`variant_required`, `variant_unavailable`), pickup available, stock re
 * Idempotent retry: 201 with the same `id` and `reference`.
 
 ### `POST /reservations/lookup` (public)
+The answer (and `GET /me/reservations/{id}`) includes `payments[{ currency, amount, method CASH_AT_PICKUP|STRIPE_CHECKOUT, receivedAt, reversed }]`, oldest first: what the customer paid and how. It has no staff identity, no provider reference and no note. The `/me/reservations` list and a freshly created reservation carry `payments: []` (no per-row query). Balances stay per currency.
+
 `{ "reference": "ANA-K7M2QX", "phone": "+509 3700 0000" }` -> **200** `CustomerReservationView`, or **404** `{ "status": 404, "code": "reservation_not_found", "detail": "No reservation matches this reference and phone number." }`.
 * Both must match. The reference is case and whitespace insensitive. The phone is compared on **digits only**: the national number (`37000000`), or the dial code plus the national number (`+509 3700 0000`, `509 37000000`, `00509 37000000`).
   Fewer than 6 digits or a suffix of the number never matches (deliberately stricter than the storefront demo, which accepted any suffix).
@@ -177,7 +181,8 @@ variants (`variant_required`, `variant_unavailable`), pickup available, stock re
 
 ## Customer account (any valid token; always the token's own user)
 
-### `GET /me` -> `{ "userId", "email", "emailVerified", "staff", "permissions": [], "customerProfileId" }`
+### `GET /me` -> `{ "userId", "email", "emailVerified", "staff", "mfaRequired", "permissions": [], "customerProfileId" }`
+`mfaRequired` is true only for an ACTIVE team member whose session has not completed a second factor while `ana.staff.require-mfa` is on; such a session has `staff:false` and every `/admin/**` call answers `403 mfa_required` (never both flags true).
 `customerProfileId` is the user's own customer record id or `null`. `permissions` is empty by design (roles are undecided); `staff` comes from the staff table, never from token claims; `emailVerified` is informational.
 
 ### `GET /me/profile`, `PUT /me/profile`
@@ -304,10 +309,18 @@ Codes: 409 `already_paid` (that currency is settled), `already_reversed`; 422 `c
 Query: `from`, `to` (`yyyy-MM-dd`, both inclusive; default: the last 30 days), `timezone` (IANA, default `America/Port-au-Prince`); at most 366 days (422 `period_too_long`, `date_range_invalid`). All read-only; every amount is per currency (`{ "HTG": "…", "USD": "…" }`).
 * `GET /admin/reports/overview` -> `{ period, reservationsCreated{status:n}, openNow{PENDING_REVIEW,CONFIRMED,READY_FOR_PICKUP}, collected{cur}, paymentsNet{cur}, stock{ok,low,out,untracked,activeProductsWithoutStockRecord}, activeProducts, newCustomers }`.
 * `GET /admin/reports/sales?groupBy=DAY|WEEK|MONTH` -> `{ period, groupBy, buckets[{ start, collected{cur}, reservations }], totals{cur}, reservations }`; a **sale** is a reservation that was COLLECTED, dated by its collection; empty buckets are included.
-* `GET /admin/reports/payments?groupBy=` -> `{ period, groupBy, buckets[{ start, received, reversed (positive), adjustments (signed), net }], totals }`, from the ledger entry dates.
+* `GET /admin/reports/payments?groupBy=` -> `{ period, groupBy, buckets[{ start, received, reversed (positive), adjustments (signed), net }], totals, receivedByMethod{ CASH_AT_PICKUP{cur}, STRIPE_CHECKOUT{cur} } }`; the buckets come from the ledger entry dates, `receivedByMethod` is the money received in the period split by how it was paid (payment record dates; reversals are not netted), per currency.
 * `GET /admin/reports/products?currency=&limit=10` -> `{ period, rows[{ productId, name, sku, currency, quantity, revenue, reservations }] }`, ranked inside each currency by revenue then units, `limit` (1-100) rows per currency; names are the reservation snapshots.
 * `GET /admin/reports/reservations` -> `{ period, byStatus, total, rejectionReasons{code:n} }` (reservations created in the period, by current status).
 * `GET /admin/reports/stock` -> `{ stock{…}, activeProducts }` (now). Not implemented: stock valuation (no cost data exists), average processing times.
+
+### Team `/admin/staff` (membership is all-or-nothing: roles are an open decision, D14 in docs/decisions.md)
+* `GET /admin/staff` -> `[{ userId, active, you, initial, displayName?, email?, note, joinedAt, updatedAt? }]`. `displayName`/`email` come from the person's customer profile when they have one; otherwise `note` (what the inviter wrote) identifies them. `initial`: provisioned from configuration, not invited.
+* `PUT /admin/staff/{userId}` `{ active }` -> deactivate / reactivate; effective on the member's very next request. Refused: your own access (`422 cannot_change_own_access`), removing the last active member (`409 last_active_staff`); unknown id 404.
+* `POST /admin/staff/invitations` `{ note (1-80 chars) }` -> **201** `{ id, note, expiresAt, code }`. The **code is returned only here** (24 characters from an unambiguous alphabet, shown as `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`); only its SHA-256 hash is stored. Lifetime `ana.staff.invitation-days` (default 7).
+* `GET /admin/staff/invitations` -> `[{ id, note, status PENDING|ACCEPTED|REVOKED|EXPIRED, createdAt, expiresAt }]` (never the code). `DELETE /admin/staff/invitations/{id}` -> 204; only a pending one (`409 invitation_not_pending`).
+* `POST /me/staff-invitation` `{ code }` (any signed-in account; the account is the token's subject) -> `{ joined:true }`. Case and dashes are ignored. Every unusable code (unknown, malformed, used, revoked, expired) is the same `404 invitation_invalid`; an account that is already active staff gets `409 already_staff` and the code is not consumed. Rate limit `staff.accept` (5 per 10 minutes).
+* Audit: `STAFF_INVITED`, `STAFF_INVITATION_REVOKED`, `STAFF_JOINED`, `STAFF_DEACTIVATED`, `STAFF_REACTIVATED` (no code, no note text).
 
 ## Concurrency
 Stock: `SELECT ... FOR UPDATE` on the inventory rows in a stable order inside the reservation transaction (ADR 0009); losers get 409 `insufficient_stock` (tested over HTTP with simultaneous requests for the last units across both currencies). Optimistic `version` columns

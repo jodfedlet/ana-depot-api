@@ -5,6 +5,8 @@ This document separates what was verified **locally**, with **mocks**, on **host
 
 Commits audited (both on `main`, nothing pushed, working trees clean before this task): web `ca71b84`, API `01dc143`. This staging pack was added on top in a separate commit.
 
+**Cloudflare staging (2026-11-18):** the hosting plan, Cloudflare compatibility report (web: OpenNext vs vinext; API: Containers vs a managed runtime), measured container footprint and cost estimate are in [cloudflare-staging-plan.md](cloudflare-staging-plan.md); the per-check PASS/FAIL/BLOCKED/SKIP matrix is in [hosted-verification-report.md](hosted-verification-report.md). The API now has a `Dockerfile`.
+
 ## 1. Blockers (what only the owner can provide)
 
 | # | Needed | Why it blocks | Who |

@@ -1,0 +1,12 @@
+# Keep secrets, build output and local tooling out of the image build context.
+.git
+target
+.env
+.env.*
+dev
+docs
+**/*.env
+**/signing_key.json
+.idea
+*.iml
+HELP.md

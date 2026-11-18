@@ -94,3 +94,6 @@ presigned uploads against MinIO; Data API lockdown (RLS + revoked roles, simulat
 See [docs/domain.md](docs/domain.md#open-business-decisions) and each ADR's *Consequences*. Notable: overpayment is accepted (existing storefront
 behavior, undecided); no hold period (`expires_at` null); reversal/adjustment allowed only while a reservation is READY_FOR_PICKUP (conservative,
 undecided); roles/permissions not modelled; unit list and pack/box conversion undecided; variant option axes must be category attributes.
+
+## Hosted staging
+Readiness audit, environment templates and verification tools: [docs/staging/README.md](docs/staging/README.md) (`dev/staging/check-env.mjs`, `dev/staging/probe.mjs`).

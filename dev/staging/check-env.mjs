@@ -100,6 +100,7 @@ if (!flag(api.ANA_HSTS_ENABLED)) err("ANA_HSTS_ENABLED must be true on an HTTPS-
 if (!flag(web.SECURITY_HTTPS_ONLY)) err("web SECURITY_HTTPS_ONLY must be true on an HTTPS-only staging deployment (HSTS, Secure auth cookies)");
 if (placeholder(api.ANA_RATE_LIMIT_TRUSTED_PROXIES)) warn("ANA_RATE_LIMIT_TRUSTED_PROXIES is empty: behind a proxy every client shares one rate-limit bucket (and X-Forwarded-For is ignored)");
 if (placeholder(api.MANAGEMENT_SERVER_PORT)) warn("MANAGEMENT_SERVER_PORT is not set: there is no private metrics endpoint for a scraper (monitoring not wired)");
+if (!flag(api.ANA_STAFF_REQUIRE_MFA)) warn("ANA_STAFF_REQUIRE_MFA is not true: team members can reach the administration with a password alone (recommended: true once TOTP is enabled in the Supabase project; decision D15)");
 if (placeholder(api.ANA_BOOTSTRAP_ADMIN_SUBJECT)) warn("ANA_BOOTSTRAP_ADMIN_SUBJECT is empty: nobody will be staff until a staff row is created");
 if (filled(web, "NEXT_PUBLIC_SITE_URL") === false) warn("NEXT_PUBLIC_SITE_URL is empty: canonical URLs, hreflang, Open Graph and the sitemap are omitted");
 

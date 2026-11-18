@@ -44,7 +44,9 @@ public interface ReportService {
 			Map<SupportedCurrency, Money> net) {
 	}
 
-	record PaymentsSeries(ReportPeriod period, Grouping grouping, List<PaymentBucket> buckets, PaymentBucket totals) {
+	/** {@code receivedByMethod}: money received in the period split by how it was paid, per currency (never summed across currencies). */
+	record PaymentsSeries(ReportPeriod period, Grouping grouping, List<PaymentBucket> buckets, PaymentBucket totals,
+			Map<com.anadepot.core.payment.model.PaymentMethod, Map<SupportedCurrency, Money>> receivedByMethod) {
 	}
 
 	record ReservationsReport(ReportPeriod period, Map<ReservationStatus, Long> byStatus, long total, Map<String, Long> rejectionReasons) {

@@ -36,8 +36,10 @@ class AccountController {
 	}
 
 	private final AccountService accounts;
+	private final com.anadepot.infra.reservation.CustomerViews views;
 
-	AccountController(AccountService accounts) {
+	AccountController(AccountService accounts, com.anadepot.infra.reservation.CustomerViews views) {
+		this.views = views;
 		this.accounts = accounts;
 	}
 
@@ -59,7 +61,7 @@ class AccountController {
 
 	@GetMapping("/reservations/{id}")
 	CustomerReservationView reservation(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-		return CustomerReservationView.of(accounts.reservation(userId(jwt), id));
+		return views.detail(accounts.reservation(userId(jwt), id));
 	}
 
 	private static UUID userId(Jwt jwt) {

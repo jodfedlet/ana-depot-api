@@ -1,6 +1,7 @@
 package com.anadepot.core.report.model;
 
 import com.anadepot.core.payment.model.LedgerEntryType;
+import com.anadepot.core.payment.model.PaymentMethod;
 import com.anadepot.core.shared.money.Money;
 import com.anadepot.core.shared.money.SupportedCurrency;
 import java.time.Instant;
@@ -18,6 +19,10 @@ public final class ReportRows {
 
 	/** One ledger entry: +received, -reversal, +/-adjustment, in its own currency. */
 	public record LedgerMovement(Instant at, LedgerEntryType type, Money amount) {
+	}
+
+	/** Money received through one payment method (cash at pickup, online card payment...), in the currency it was received in. Reversals are not netted here: see the ledger series. */
+	public record ReceivedByMethod(PaymentMethod method, Money amount) {
 	}
 
 	/** What one product sold (collected reservations only) in one currency. */

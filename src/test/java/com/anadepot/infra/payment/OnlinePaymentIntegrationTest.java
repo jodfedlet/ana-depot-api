@@ -291,6 +291,44 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 	}
 
 	@Test
+	void theCustomerSeesTheirPaymentHistoryAndStaffSeeTheMethodSplitAndAConsistentReconciliation() throws Exception {
+		var r = readyBoth();
+		var attempt = checkout(r, "USD", key(), 201);
+		assertThat(deliver(sessionEvent("evt_hist_1", "checkout.session.completed", attempt, "pi_hist", "18000", "usd", "paid"))).isEqualTo(200);
+		var staff = newStaffToken();
+		post("/api/v1/admin/reservations/" + r.id() + "/payments", Map.of("amount", "25000.00", "currency", "HTG"), staff, key()).andExpect(status().isCreated());
+
+		// the customer's own view: both payments, in their own currency, with how they were paid; nothing internal
+		var view = JSON.readTree(post("/api/v1/reservations/lookup", Map.of("reference", r.reference(), "phone", phone(r)), null, null).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		assertThat(view.get("payments")).hasSize(2);
+		var byCurrency = new java.util.HashMap<String, JsonNode>();
+		view.get("payments").forEach(p -> byCurrency.put(p.get("currency").asString(), p));
+		assertThat(byCurrency.get("USD").get("amount").asString()).isEqualTo("180.00");
+		assertThat(byCurrency.get("USD").get("method").asString()).isEqualTo("STRIPE_CHECKOUT");
+		assertThat(byCurrency.get("HTG").get("amount").asString()).isEqualTo("25000.00");
+		assertThat(byCurrency.get("HTG").get("method").asString()).isEqualTo("CASH_AT_PICKUP");
+		assertThat(view.get("paymentStatus").asString()).isEqualTo("PAID");
+		var raw = view.get("payments").toString();
+		assertThat(raw).doesNotContain("pi_hist").doesNotContain("recordedBy").doesNotContain("reference").doesNotContain("note");
+		for (var b : view.get("balances")) {
+			assertThat(b.get("due").asString()).isEqualTo("0.00");
+		}
+
+		// the reports tell cash and Stripe apart, per currency, never summed across currencies
+		var report = JSON.readTree(get("/api/v1/admin/reports/payments", staff).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		var split = report.get("receivedByMethod");
+		assertThat(new java.math.BigDecimal(split.get("STRIPE_CHECKOUT").get("USD").asString())).isGreaterThanOrEqualTo(new java.math.BigDecimal("180.00"));
+		assertThat(new java.math.BigDecimal(split.get("STRIPE_CHECKOUT").get("HTG").asString())).isEqualByComparingTo("0");   // this fake account only takes USD: HTG is shown, as zero, never converted
+		assertThat(new java.math.BigDecimal(split.get("CASH_AT_PICKUP").get("HTG").asString())).isGreaterThanOrEqualTo(new java.math.BigDecimal("25000.00"));
+
+		// staff reconciliation: the cached paid amounts equal the ledger, per currency, and the Stripe payment is in the list marked as online
+		var recon = JSON.readTree(get("/api/v1/admin/reservations/" + r.id() + "/reconciliation", staff).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		assertThat(recon.toString()).doesNotContain("\"consistent\":false");
+		var adminPayments = JSON.readTree(get("/api/v1/admin/reservations/" + r.id() + "/payments", staff).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		assertThat(adminPayments.toString()).contains("STRIPE_CHECKOUT").contains("CASH_AT_PICKUP");
+	}
+
+	@Test
 	void aMismatchedAmountOrCurrencyPostsNothingAndIsFlagged() throws Exception {
 		var r = readyBoth();
 		var attempt = checkout(r, "USD", key(), 201);

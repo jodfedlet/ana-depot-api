@@ -53,7 +53,8 @@ class AdminReportController {
 	record PaymentBucket(LocalDate start, Map<String, String> received, Map<String, String> reversed, Map<String, String> adjustments, Map<String, String> net) {
 	}
 
-	record PaymentsResponse(Period period, String groupBy, List<PaymentBucket> buckets, PaymentBucket totals) {
+	/** {@code receivedByMethod}: received money by how it was paid (CASH_AT_PICKUP, STRIPE_CHECKOUT), per currency. */
+	record PaymentsResponse(Period period, String groupBy, List<PaymentBucket> buckets, PaymentBucket totals, Map<String, Map<String, String>> receivedByMethod) {
 	}
 
 	record ProductRow(UUID productId, String name, String sku, String currency, long quantity, String revenue, long reservations) {
@@ -96,7 +97,8 @@ class AdminReportController {
 			@RequestParam(required = false) String groupBy) {
 		var grouping = grouping(groupBy);
 		var p = reports.payments(period(from, to, timezone), grouping);
-		return new PaymentsResponse(period(p.period()), grouping.name(), p.buckets().stream().map(AdminReportController::paymentBucket).toList(), paymentBucket(p.totals()));
+		return new PaymentsResponse(period(p.period()), grouping.name(), p.buckets().stream().map(AdminReportController::paymentBucket).toList(), paymentBucket(p.totals()),
+				methodSplit(p.receivedByMethod()));
 	}
 
 	@GetMapping("/products")
@@ -174,6 +176,16 @@ class AdminReportController {
 
 	private static Stock stock(ReportRows.StockCounts s) {
 		return new Stock(s.ok(), s.low(), s.out(), s.untracked(), s.productsWithoutStockRecord());
+	}
+
+	private static Map<String, Map<String, String>> methodSplit(Map<com.anadepot.core.payment.model.PaymentMethod, Map<com.anadepot.core.shared.money.SupportedCurrency, com.anadepot.core.shared.money.Money>> split) {
+		var out = new java.util.LinkedHashMap<String, Map<String, String>>();
+		split.forEach((method, amounts) -> {
+			var inner = new java.util.LinkedHashMap<String, String>();
+			amounts.forEach((currency, money) -> inner.put(currency.name(), money.amount().toPlainString()));
+			out.put(method.name(), inner);
+		});
+		return out;
 	}
 
 	private static PaymentBucket paymentBucket(ReportService.PaymentBucket b) {

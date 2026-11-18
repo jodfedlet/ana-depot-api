@@ -21,7 +21,7 @@ import java.util.UUID;
  */
 public record CustomerReservationView(UUID id, String reference, String status, String paymentStatus, String locale, Instant createdAt, Instant readyAt,
 		Instant expiresAt, Contact contact, List<Line> lines, List<Amount> totals, List<Balance> balances, Map<String, Object> pickup,
-		boolean canCancel, List<Event> events) {
+		boolean canCancel, List<Event> events, List<PaymentLine> payments) {
 
 	public record Contact(String firstName, String lastName, String dialCode, String phone, String email) {
 
@@ -35,6 +35,13 @@ public record CustomerReservationView(UUID id, String reference, String status, 
 	public record Amount(String currency, String amount) {
 	}
 
+	/**
+	 * One payment of the reservation as the customer may see it: how much, in which currency, how it was paid and when. No staff identity, no reference, no note.
+	 * {@code reversed}: a staff correction took it back (the balances above already reflect it).
+	 */
+	public record PaymentLine(String currency, String amount, String method, Instant receivedAt, boolean reversed) {
+	}
+
 	public record Balance(String currency, String total, String paid, String due) {
 	}
 
@@ -46,7 +53,12 @@ public record CustomerReservationView(UUID id, String reference, String status, 
 	public record Event(String type, Instant at, String note, String rejectReason, String cancelledBy) {
 	}
 
+	/** Without the payment list (a reservation that was just created has none; list pages do not load one per row). */
 	public static CustomerReservationView of(Reservation r) {
+		return of(r, List.of());
+	}
+
+	public static CustomerReservationView of(Reservation r, List<PaymentLine> payments) {
 		var lines = r.lines().stream().map(CustomerReservationView::line).toList();
 		var totals = r.totals().amounts().stream().sorted(Comparator.comparing(m -> m.currency().name())).map(CustomerReservationView::amount).toList();
 		var balances = r.balances().values().stream()
@@ -54,7 +66,7 @@ public record CustomerReservationView(UUID id, String reference, String status, 
 		var contact = new Contact(r.contact().firstName(), r.contact().lastName(), r.contact().dialCode(), r.contact().phone(), r.contact().email());
 		// canCancel is false until the business decides if and when a customer may cancel (open decision): there is no customer cancel endpoint
 		return new CustomerReservationView(r.id(), r.reference(), r.status().name(), r.paymentStatus().name(), r.locale(), r.createdAt(), r.readyAt(), r.expiresAt(),
-				contact, lines, totals, balances, Json.readMap(r.pickupSnapshotJson()), false, events(r));
+				contact, lines, totals, balances, Json.readMap(r.pickupSnapshotJson()), false, events(r), List.copyOf(payments));
 	}
 
 	private static Amount amount(Money m) {

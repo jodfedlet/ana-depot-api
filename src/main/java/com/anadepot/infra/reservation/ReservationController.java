@@ -37,8 +37,10 @@ class ReservationController {
 	private final ReservationService reservations;
 	private final RateLimiter limiter;
 	private final com.anadepot.infra.config.AnaProperties properties;
+	private final CustomerViews views;
 
-	ReservationController(ReservationService reservations, RateLimiter limiter, com.anadepot.infra.config.AnaProperties properties) {
+	ReservationController(ReservationService reservations, RateLimiter limiter, com.anadepot.infra.config.AnaProperties properties, CustomerViews views) {
+		this.views = views;
 		this.reservations = reservations;
 		this.limiter = limiter;
 		this.properties = properties;
@@ -84,7 +86,7 @@ class ReservationController {
 		if (!decision.allowed()) {
 			throw new RateLimitExceededException(decision.retryAfter());
 		}
-		return reservations.lookup(reference, body.phone()).map(CustomerReservationView::of).orElseThrow(ReservationController::notFound);
+		return reservations.lookup(reference, body.phone()).map(views::detail).orElseThrow(ReservationController::notFound);
 	}
 
 	static NotFoundException notFound() {

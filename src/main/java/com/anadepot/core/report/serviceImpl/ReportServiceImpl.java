@@ -113,7 +113,13 @@ public class ReportServiceImpl implements ReportService {
 			for (var bucket : received.keySet()) {
 				list.add(bucket(bucket, received.get(bucket), reversed.get(bucket), adjustments.get(bucket)));
 			}
-			return new PaymentsSeries(p, grouping, list, bucket(null, tr, tv, ta));
+			var byMethod = new java.util.EnumMap<com.anadepot.core.payment.model.PaymentMethod, CurrencyTotals>(com.anadepot.core.payment.model.PaymentMethod.class);
+			for (var row : reports.receivedByMethod(p.start(), p.end())) {
+				byMethod.merge(row.method(), CurrencyTotals.empty().plus(row.amount()), (a, b) -> a.plus(row.amount()));
+			}
+			var split = new java.util.LinkedHashMap<com.anadepot.core.payment.model.PaymentMethod, Map<SupportedCurrency, Money>>();
+			byMethod.forEach((method, totals) -> split.put(method, perCurrency(totals)));
+			return new PaymentsSeries(p, grouping, list, bucket(null, tr, tv, ta), split);
 		});
 	}
 

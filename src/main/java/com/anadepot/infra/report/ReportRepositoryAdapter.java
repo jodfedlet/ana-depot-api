@@ -69,6 +69,15 @@ class ReportRepositoryAdapter implements ReportRepository {
 	}
 
 	@Override
+	public List<ReportRows.ReceivedByMethod> receivedByMethod(Instant from, Instant to) {
+		var rows = new ArrayList<ReportRows.ReceivedByMethod>();
+		em.createQuery("select p.paymentMethod, p.currency, sum(p.amount) from PaymentEntity p where p.recordedAt >= :from and p.recordedAt < :to group by p.paymentMethod, p.currency", Object[].class)
+				.setParameter("from", from).setParameter("to", to).getResultList()
+				.forEach(row -> rows.add(new ReportRows.ReceivedByMethod((com.anadepot.core.payment.model.PaymentMethod) row[0], Money.of((BigDecimal) row[2], (SupportedCurrency) row[1]))));
+		return rows;
+	}
+
+	@Override
 	public List<ReportRows.ProductSales> productSales(Instant from, Instant to) {
 		var rows = new ArrayList<ReportRows.ProductSales>();
 		em.createQuery("select l.productId, max(l.productName), max(l.productSku), l.currency, sum(l.quantity), sum(l.lineTotal), count(distinct r.id) "

@@ -21,6 +21,9 @@ public interface ReportRepository {
 	/** Every ledger entry created in the range. */
 	List<ReportRows.LedgerMovement> ledger(Instant from, Instant to);
 
+	/** Payments recorded in the range, one row per method and currency (the sum of received money by how it was paid). */
+	List<ReportRows.ReceivedByMethod> receivedByMethod(Instant from, Instant to);
+
 	/** Per product and currency: units and revenue of the reservations collected in the range. */
 	List<ReportRows.ProductSales> productSales(Instant from, Instant to);
 

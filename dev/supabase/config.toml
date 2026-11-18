@@ -283,8 +283,9 @@ max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+# On for the local stack: the staff second factor (ana.staff.require-mfa) is verified against real GoTrue TOTP enrolment and aal2 tokens (docs/auth.md)
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]

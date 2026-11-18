@@ -32,7 +32,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/admin/staff")
 class AdminStaffController {
 
-	record MemberView(UUID userId, boolean active, boolean you, String displayName, String email, String note, Instant joinedAt, Instant updatedAt) {
+	/** {@code initial}: the first administrator, provisioned from configuration rather than invited (no inviter). */
+	record MemberView(UUID userId, boolean active, boolean you, boolean initial, String displayName, String email, String note, Instant joinedAt, Instant updatedAt) {
 
 		/** Personal data: never printed. */
 		@Override
@@ -105,7 +106,7 @@ class AdminStaffController {
 
 	private static MemberView view(StaffMember m, CustomerJpaRepository.AccountName name, String callerId) {
 		var display = name == null ? null : ((name.firstName() == null ? "" : name.firstName()) + " " + (name.lastName() == null ? "" : name.lastName())).strip();
-		return new MemberView(m.userId(), m.active(), m.userId().toString().equals(callerId), display == null || display.isEmpty() ? null : display, name == null ? null : name.email(), m.note(),
+		return new MemberView(m.userId(), m.active(), m.userId().toString().equals(callerId), m.grantedBy() == null, display == null || display.isEmpty() ? null : display, name == null ? null : name.email(), m.note(),
 				m.grantedAt(), m.updatedAt());
 	}
 }

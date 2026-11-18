@@ -123,6 +123,12 @@ class CoreConfig {
 	}
 
 	@Bean
+	com.anadepot.core.staff.service.StaffService staffService(com.anadepot.core.staff.repository.StaffRepository repository, AuditRecorder audit, TransactionBoundary tx, Clock clock,
+			com.anadepot.infra.security.StaffProperties staffProperties) {
+		return new com.anadepot.core.staff.serviceImpl.StaffServiceImpl(repository, audit, tx, clock, java.time.Duration.ofDays(staffProperties.invitationDays()));
+	}
+
+	@Bean
 	UploadService uploadService(UploadIntentRepository intents, ProductRepository products, ObjectStorage storage, AuditRecorder audit, DomainEventRecorder events,
 			IdempotencyService idempotency, TransactionBoundary tx, Clock clock, AnaProperties properties) {
 		var u = properties.upload();

@@ -73,6 +73,20 @@ public abstract class ApiTestSupport extends AbstractIntegrationTest {
 		}
 	}
 
+	/** A token carrying extra claims (for example {@code aal}, the authenticator assurance level Supabase puts in the signed token). */
+	protected static String token(UUID subject, java.util.Map<String, Object> extraClaims) {
+		try {
+			var claims = new JWTClaimsSet.Builder().issuer(ISSUER).subject(subject.toString()).audience(AUDIENCE).issueTime(Date.from(Instant.now().minusSeconds(5)))
+					.expirationTime(Date.from(Instant.now().plusSeconds(600))).claim("email", subject + "@example.test");
+			extraClaims.forEach(claims::claim);
+			var jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.RS256), claims.build());
+			jwt.sign(new RSASSASigner((RSAPrivateKey) KEY.getPrivate()));
+			return jwt.serialize();
+		} catch (Exception e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
 	/** A token of a NEW user who is staff (membership recorded in the staff table, as in production). */
 	protected String newStaffToken() {
 		var id = UUID.randomUUID();

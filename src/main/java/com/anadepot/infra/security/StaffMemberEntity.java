@@ -16,6 +16,8 @@ class StaffMemberEntity {
 	UUID grantedBy;
 	Instant grantedAt;
 	String note;
+	UUID updatedBy;
+	Instant updatedAt;
 
 	protected StaffMemberEntity() {
 	}

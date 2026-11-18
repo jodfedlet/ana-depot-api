@@ -34,6 +34,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 			new Rule(HttpMethod.POST, "/api/v1/reservations/lookup", "reservation.lookup"),   // POST: the phone number must not travel in a URL
 			new Rule(HttpMethod.POST, "/api/v1/reservations/*/payments/checkout-session", "payment.checkout"),
 			new Rule(HttpMethod.POST, "/api/v1/reservations/*/payments/status", "payment.status"),
+			new Rule(HttpMethod.POST, "/api/v1/me/staff-invitation", "staff.accept"),   // redeeming a code: very few tries
 			new Rule(HttpMethod.PUT, "/api/v1/me/profile", "account.write"),
 			new Rule(HttpMethod.GET, "/api/v1/me/**", "account.read"),
 			new Rule(HttpMethod.POST, "/api/v1/admin/products/*/images/uploads", "upload.request"),

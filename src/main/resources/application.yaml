@@ -112,6 +112,10 @@ ana:
       "[webhook.receive]": { max-requests: 300, window: PT1M }
       "[payment.checkout]": { max-requests: 10, window: PT10M }
       "[payment.status]": { max-requests: 60, window: PT1M }
+      "[staff.accept]": { max-requests: 5, window: PT10M }
+  staff:
+    require-mfa: ${ANA_STAFF_REQUIRE_MFA:false}                 # true = staff access needs a session that passed a second factor (Supabase aal2); recommended for production
+    invitation-days: ${ANA_STAFF_INVITATION_DAYS:7}
   stripe:                                                       # online payment (docs/payments-stripe.md); OFF unless ANA_STRIPE_ENABLED=true
     enabled: ${ANA_STRIPE_ENABLED:false}
     secret-key: ${STRIPE_SECRET_KEY:}                           # backend only; sk_test_ locally, sk_live_ only in production

@@ -22,7 +22,13 @@ public class ProblemSecurityHandlers implements AuthenticationEntryPoint, Access
 
 	@Override
 	public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException ex) throws IOException {
-		write(response, 403, "Forbidden", "forbidden", "You are not allowed to perform this operation.");
+		var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+		boolean mfa = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(StaffAuthoritiesConverter.MFA_REQUIRED));
+		if (mfa) {
+			write(response, 403, "Forbidden", "mfa_required", "A second verification step is required before using the administration.");
+		} else {
+			write(response, 403, "Forbidden", "forbidden", "You are not allowed to perform this operation.");
+		}
 	}
 
 	private static void write(HttpServletResponse response, int status, String title, String code, String detail) throws IOException {

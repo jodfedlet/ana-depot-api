@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/me")
 class MeController {
 
-	record MeResponse(UUID userId, String email, boolean emailVerified, boolean staff, List<String> permissions, UUID customerProfileId) {
+	record MeResponse(UUID userId, String email, boolean emailVerified, boolean staff, boolean mfaRequired, List<String> permissions, UUID customerProfileId) {
 	}
 
 	private final CustomerJpaRepository customers;
@@ -32,9 +32,11 @@ class MeController {
 	MeResponse me(@AuthenticationPrincipal Jwt jwt, Authentication authentication) {
 		var userId = UUID.fromString(jwt.getSubject());
 		boolean staff = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(StaffAuthoritiesConverter.STAFF));
+		// an active member whose session lacks the second factor: not staff yet, and the web sends them to enroll/verify
+		boolean mfaRequired = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(StaffAuthoritiesConverter.MFA_REQUIRED));
 		var profile = customers.findByAuthUserId(userId).map(c -> c.id()).orElse(null);
 		// permissions: the role model is an open business decision, so the list is empty by design
-		return new MeResponse(userId, jwt.getClaimAsString("email"), emailVerified(jwt), staff, List.of(), profile);
+		return new MeResponse(userId, jwt.getClaimAsString("email"), emailVerified(jwt), staff, mfaRequired, List.of(), profile);
 	}
 
 	/** Informational only (never used for authorization): Supabase issues sessions to verified addresses when confirmation is enabled. */

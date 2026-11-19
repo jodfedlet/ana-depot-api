@@ -95,6 +95,21 @@ if (flag(api.ANA_STRIPE_ENABLED)) {
   warn("ANA_STRIPE_ENABLED is not true: online payment will not be verified on staging");
 }
 
+// ---- customer e-mail (mandatory for launch) ---------------------------------------------------------------------------------
+if (api.ANA_MAIL_MODE !== "smtp") err("ANA_MAIL_MODE must be smtp: customer e-mail is mandatory (log writes files and sends nothing; disabled queues and sends nothing)");
+else {
+  for (const k of ["ANA_MAIL_SMTP_HOST", "ANA_MAIL_FROM_ADDRESS"]) need(api, k, "API");
+  if (flag(api.ANA_MAIL_SMTP_AUTH ?? "true")) { need(api, "ANA_MAIL_SMTP_USERNAME", "API"); need(api, "ANA_MAIL_SMTP_PASSWORD", "API"); }
+  if (filled(api, "ANA_MAIL_FROM_ADDRESS") && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(api.ANA_MAIL_FROM_ADDRESS)) err("ANA_MAIL_FROM_ADDRESS is not a valid e-mail address");
+  if (flag(api.ANA_MAIL_SMTP_SSL) && flag(api.ANA_MAIL_SMTP_STARTTLS ?? "true")) err("ANA_MAIL_SMTP_SSL and ANA_MAIL_SMTP_STARTTLS are mutually exclusive (465 + SSL, or 587 + STARTTLS)");
+  if (!flag(api.ANA_MAIL_SMTP_SSL) && !flag(api.ANA_MAIL_SMTP_STARTTLS ?? "true")) err("SMTP without TLS: enable ANA_MAIL_SMTP_STARTTLS or ANA_MAIL_SMTP_SSL (credentials and customer data must not travel in clear text)");
+  if (/localhost|127\.0\.0\.1/.test(api.ANA_MAIL_SMTP_HOST ?? "")) err("ANA_MAIL_SMTP_HOST points at localhost: staging must use the real SMTP provider");
+  if (filled(api, "ANA_WEB_BASE_URL") && !isHttps(api.ANA_WEB_BASE_URL)) err("ANA_WEB_BASE_URL must be an https:// URL");
+  if (filled(api, "ANA_WEB_BASE_URL") && site && origin(api.ANA_WEB_BASE_URL) !== site) err("ANA_WEB_BASE_URL must be the storefront origin (the tracking link in every e-mail)");
+  if (!filled(api, "ANA_WEB_BASE_URL")) warn("ANA_WEB_BASE_URL is empty: e-mails will not contain a tracking button (they explain in words)");
+  if (!filled(api, "ANA_MAIL_TERMS_URL") || !filled(api, "ANA_MAIL_PRIVACY_URL")) warn("ANA_MAIL_TERMS_URL / ANA_MAIL_PRIVACY_URL are empty: the e-mails will carry no legal links (decision D18)");
+}
+
 // ---- HTTPS, headers, proxies, monitoring -----------------------------------------------------------------------------------
 if (!flag(api.ANA_HSTS_ENABLED)) err("ANA_HSTS_ENABLED must be true on an HTTPS-only staging deployment");
 if (!flag(web.SECURITY_HTTPS_ONLY)) err("web SECURITY_HTTPS_ONLY must be true on an HTTPS-only staging deployment (HSTS, Secure auth cookies)");

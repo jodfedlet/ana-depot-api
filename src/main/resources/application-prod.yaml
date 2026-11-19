@@ -20,6 +20,9 @@ spring:
     # Migrations run at start-up on the main connection unless SPRING_FLYWAY_URL / _USER / _PASSWORD point Flyway at a direct or
     # session-mode connection (REQUIRED when the application itself uses the transaction pooler).
     connect-retries: 3
+ana:
+  mail:
+    mode: ${ANA_MAIL_MODE:smtp}      # production sends real e-mail: a missing SMTP setting stops the start-up with a message naming the variable (ANA_MAIL_MODE=disabled is an explicit, logged opt-out)
 management:
   endpoint:
     health:

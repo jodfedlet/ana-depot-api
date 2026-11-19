@@ -93,9 +93,22 @@ class CoreConfig {
 	}
 
 	@Bean
+	com.anadepot.core.notification.service.NotificationRecorder notificationRecorder(com.anadepot.core.notification.repository.NotificationRepository notifications, Clock clock,
+			com.anadepot.infra.notification.MailProperties mail) {
+		return new com.anadepot.core.notification.serviceImpl.NotificationRecorderImpl(notifications, clock, mail.perRecipientPerHour());
+	}
+
+	@Bean
+	com.anadepot.core.notification.service.NotificationAdminService notificationAdminService(com.anadepot.core.notification.repository.NotificationRepository notifications, AuditRecorder audit,
+			TransactionBoundary tx, Clock clock) {
+		return new com.anadepot.core.notification.serviceImpl.NotificationAdminServiceImpl(notifications, audit, tx, clock);
+	}
+
+	@Bean
 	ReservationService reservationService(ReservationRepository reservations, InventoryRepository inventory, CatalogService catalog, CustomerRepository customers,
-			AuditRecorder audit, DomainEventRecorder events, OperationMetrics metrics, IdempotencyService idempotency, TransactionBoundary tx, Clock clock, com.anadepot.core.reservation.repository.PickupSnapshotProvider pickup) {
-		return new ReservationServiceImpl(reservations, inventory, catalog, customers, audit, events, metrics, idempotency, tx, clock, pickup);
+			AuditRecorder audit, DomainEventRecorder events, OperationMetrics metrics, IdempotencyService idempotency, TransactionBoundary tx, Clock clock, com.anadepot.core.reservation.repository.PickupSnapshotProvider pickup,
+			com.anadepot.core.notification.service.NotificationRecorder notifications) {
+		return new ReservationServiceImpl(reservations, inventory, catalog, customers, audit, events, metrics, idempotency, tx, clock, pickup, notifications);
 	}
 
 	@Bean
@@ -105,15 +118,15 @@ class CoreConfig {
 
 	@Bean
 	PaymentService paymentService(PaymentRepository payments, ReservationRepository reservations, AuditRecorder audit, DomainEventRecorder events,
-			OperationMetrics metrics, CorrelationContext correlation, IdempotencyService idempotency, TransactionBoundary tx, Clock clock) {
-		return new PaymentServiceImpl(payments, reservations, audit, events, metrics, correlation, idempotency, tx, clock);
+			OperationMetrics metrics, CorrelationContext correlation, IdempotencyService idempotency, TransactionBoundary tx, Clock clock, com.anadepot.core.notification.service.NotificationRecorder notifications) {
+		return new PaymentServiceImpl(payments, reservations, audit, events, metrics, correlation, idempotency, tx, clock, notifications);
 	}
 
 	@Bean
 	com.anadepot.core.payment.service.OnlinePaymentService onlinePaymentService(com.anadepot.core.payment.repository.PaymentAttemptRepository attempts, ReservationRepository reservations,
 			CustomerRepository customers, PaymentService payments, com.anadepot.core.payment.service.CheckoutGateway gateway, IdempotencyService idempotency, OperationMetrics metrics,
-			TransactionBoundary tx, Clock clock) {
-		return new com.anadepot.core.payment.serviceImpl.OnlinePaymentServiceImpl(attempts, reservations, customers, payments, gateway, idempotency, metrics, tx, clock);
+			TransactionBoundary tx, Clock clock, com.anadepot.core.notification.service.NotificationRecorder notifications) {
+		return new com.anadepot.core.payment.serviceImpl.OnlinePaymentServiceImpl(attempts, reservations, customers, payments, gateway, idempotency, metrics, tx, clock, notifications);
 	}
 
 	@Bean

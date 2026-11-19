@@ -4,6 +4,10 @@ spring:
       maximum-pool-size: 30      # concurrency tests run up to ~24 simultaneous use cases
       minimum-idle: 1            # many Spring contexts are cached per test run; do not hold idle connections
 ana:
+  mail:
+    dispatcher:
+      enabled: false            # tests drive NotificationDispatcher.dispatchOnce() explicitly
+    capture-directory: target/test-mail-capture
   outbox:
     dispatcher-enabled: false     # tests drive OutboxDispatcher.dispatchOnce() explicitly
   rate-limit:

@@ -74,6 +74,7 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 
 	@Autowired FakeGateway gateway;
 	@Autowired PaymentRepository ledger;
+	@Autowired com.anadepot.core.notification.repository.NotificationRepository notifications;
 
 	Product mattress;
 
@@ -342,6 +343,77 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 		var stored = ledger.payments(r.id()).get(0);
 		assertThat(stored.reference()).isEqualTo("pi_ok_1");
 		assertThat(stored.recordedBy()).isNull();
+	}
+
+	private java.util.List<com.anadepot.core.notification.model.Notification> mails(Reservation r) {
+		return notifications.list(new com.anadepot.core.notification.model.NotificationQuery(null, null, r.id()), new com.anadepot.core.shared.PageRequest(0, 100)).items();
+	}
+
+	private long mails(Reservation r, com.anadepot.core.notification.model.NotificationType type) {
+		return mails(r).stream().filter(n -> n.type() == type).count();
+	}
+
+	@Test
+	void noReceiptExistsUntilTheVerifiedWebhookPostsTheMoneyAndDuplicatesNeverAddASecondOne() throws Exception {
+		var r = readyBoth();
+		var attempt = checkout(r, "USD", key(), 201);
+		// the customer is sent to Stripe and comes back: opening a checkout and returning prove nothing
+		assertThat(paymentStatus(r).get("reservation").get("paymentStatus").asString()).isEqualTo("UNPAID");
+		assertThat(mails(r, com.anadepot.core.notification.model.NotificationType.PAYMENT_RECEIVED)).isZero();
+		// an unsigned or tampered delivery changes nothing, including the mail queue
+		var payload = sessionEvent("evt_mail_1", "checkout.session.completed", attempt, "pi_mail", "18000", "usd", "paid");
+		assertThat(webhook(payload, null)).isEqualTo(400);
+		assertThat(webhook(payload, "t=1,v1=deadbeef")).isEqualTo(400);
+		assertThat(mails(r, com.anadepot.core.notification.model.NotificationType.PAYMENT_RECEIVED)).isZero();
+		// the verified event posts the money and queues ONE receipt, however many times it, or the same payment under another event id, is delivered
+		assertThat(deliver(payload)).isEqualTo(200);
+		assertThat(deliver(payload)).isEqualTo(200);
+		assertThat(deliver(sessionEvent("evt_mail_2", "checkout.session.completed", attempt, "pi_mail", "18000", "usd", "paid"))).isEqualTo(200);
+		assertThat(deliver(sessionEvent("evt_mail_3", "payment_intent.succeeded", attempt, "pi_mail", "18000", "usd", "paid"))).isEqualTo(200);
+		var receipts = mails(r).stream().filter(n -> n.type() == com.anadepot.core.notification.model.NotificationType.PAYMENT_RECEIVED).toList();
+		assertThat(receipts).hasSize(1);
+		assertThat(receipts.get(0).paymentId()).isEqualTo(ledger.payments(r.id()).get(0).id());      // the receipt points at the payment in the ledger, nothing invented
+		assertThat(mails(r, com.anadepot.core.notification.model.NotificationType.PAYMENT_FAILED)).isZero();
+	}
+
+	@Test
+	void aMismatchedAmountOrCurrencyQueuesNoReceipt() throws Exception {
+		var r = readyBoth();
+		var attempt = checkout(r, "USD", key(), 201);
+		assertThat(deliver(sessionEvent("evt_mm_mail_1", "checkout.session.completed", attempt, "pi_mm_mail", "100", "usd", "paid"))).isEqualTo(200);
+		assertThat(deliver(sessionEvent("evt_mm_mail_2", "checkout.session.completed", attempt, "pi_mm_mail", "18000", "eur", "paid"))).isEqualTo(200);
+		assertThat(stripePayments(r)).isZero();
+		assertThat(mails(r, com.anadepot.core.notification.model.NotificationType.PAYMENT_RECEIVED)).isZero();
+	}
+
+	@Test
+	void aFailedOrExpiredCheckoutNotifiesOnceAndNeverAfterTheMoneyArrived() throws Exception {
+		var failedRes = readyBoth();
+		var failed = checkout(failedRes, "USD", key(), 201);
+		deliver(sessionEvent("evt_nf_1", "checkout.session.completed", failed, "pi_nf", "18000", "usd", "unpaid"));
+		deliver(sessionEvent("evt_nf_2", "checkout.session.async_payment_failed", failed, "pi_nf", "18000", "usd", "unpaid"));
+		deliver(sessionEvent("evt_nf_2", "checkout.session.async_payment_failed", failed, "pi_nf", "18000", "usd", "unpaid"));   // duplicate delivery
+		deliver(sessionEvent("evt_nf_3", "checkout.session.expired", failed, "pi_nf", "18000", "usd", "unpaid"));                // a later contradictory event for the same attempt
+		assertThat(mails(failedRes, com.anadepot.core.notification.model.NotificationType.PAYMENT_FAILED)).isEqualTo(1);
+		assertThat(mails(failedRes, com.anadepot.core.notification.model.NotificationType.CHECKOUT_EXPIRED)).isZero();
+		assertThat(mails(failedRes, com.anadepot.core.notification.model.NotificationType.PAYMENT_RECEIVED)).isZero();
+
+		var expiredRes = readyBoth();
+		var expired = checkout(expiredRes, "USD", key(), 201);
+		deliver(sessionEvent("evt_ne_1", "checkout.session.expired", expired, "pi_ne", "18000", "usd", "unpaid"));
+		deliver(sessionEvent("evt_ne_1", "checkout.session.expired", expired, "pi_ne", "18000", "usd", "unpaid"));
+		assertThat(mails(expiredRes, com.anadepot.core.notification.model.NotificationType.CHECKOUT_EXPIRED)).isEqualTo(1);
+		assertThat(mails(expiredRes, com.anadepot.core.notification.model.NotificationType.PAYMENT_FAILED)).isZero();
+
+		// out of order: the money arrived first, a failure/expiry for the same attempt arrives later -> one receipt, no "failed" message
+		var orderRes = readyBoth();
+		var attempt = checkout(orderRes, "USD", key(), 201);
+		deliver(sessionEvent("evt_no_1", "checkout.session.completed", attempt, "pi_no", "18000", "usd", "paid"));
+		deliver(sessionEvent("evt_no_2", "checkout.session.async_payment_failed", attempt, "pi_no", "18000", "usd", "unpaid"));
+		deliver(sessionEvent("evt_no_3", "checkout.session.expired", attempt, "pi_no", "18000", "usd", "unpaid"));
+		assertThat(mails(orderRes, com.anadepot.core.notification.model.NotificationType.PAYMENT_RECEIVED)).isEqualTo(1);
+		assertThat(mails(orderRes, com.anadepot.core.notification.model.NotificationType.PAYMENT_FAILED)).isZero();
+		assertThat(mails(orderRes, com.anadepot.core.notification.model.NotificationType.CHECKOUT_EXPIRED)).isZero();
 	}
 
 	@Test

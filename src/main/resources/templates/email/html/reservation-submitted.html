@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<!--/* reservation-submitted: reference, intro, items, totals, pickup, track. Layout, colours and every block live in html/fragments.html. */-->
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/fragments :: layout(#{email.submitted.title}, #{email.submitted.preheader}, ~{::main})}">
+<body>
+<th:block th:fragment="main">
+<th:block th:replace="~{html/fragments :: referenceBox}"></th:block>
+<p th:replace="~{html/fragments :: paragraph(#{email.submitted.intro})}"></p>
+<th:block th:replace="~{html/fragments :: items}"></th:block>
+<th:block th:replace="~{html/fragments :: totals}"></th:block>
+<th:block th:replace="~{html/fragments :: pickup}"></th:block>
+<p th:replace="~{html/fragments :: paragraph(#{email.track.text})}"></p>
+<table th:replace="~{html/fragments :: button(${v.trackUrl()}, #{email.track.button})}"></table>
+</th:block>
+</body>
+</html>

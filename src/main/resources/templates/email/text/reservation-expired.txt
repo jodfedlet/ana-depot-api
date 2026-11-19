@@ -1,0 +1,22 @@
+[(#{email.expired.title})]
+[# th:if="${!#strings.isEmpty(v.firstName())}"][(#{email.greeting(${v.firstName()})})][/][# th:if="${#strings.isEmpty(v.firstName())}"][(#{email.greeting.anonymous})][/]
+
+[(#{email.reference.label})] : [(${v.reference()})]
+[(#{email.submitted.on(${v.createdOn()})})]
+[(#{email.expired.intro})]
+
+[(#{email.section.payments})]
+[# th:each="p : ${v.payments()}"]- [(${p.amount()})] — [(#{${p.methodKey()}})] — [(${p.date()})]
+[/][# th:if="${#lists.isEmpty(v.payments())}"][(#{email.payments.none})]
+[/]
+[# th:if="${v.support().present()}"]
+[(#{email.support.title})] [(#{email.support.text})]
+[# th:if="${!#strings.isEmpty(v.support().email())}"][(${v.support().email()})]
+[/][# th:if="${!#strings.isEmpty(v.support().phone())}"][(${v.support().phone()})]
+[/][/]
+--
+[(#{email.footer.auto(${v.reference()})})]
+[(#{email.footer.notyou})]
+[# th:if="${v.termsUrl() != null}"][(#{email.footer.terms})] : [(${v.termsUrl()})]
+[/][# th:if="${v.privacyUrl() != null}"][(#{email.footer.privacy})] : [(${v.privacyUrl()})]
+[/]

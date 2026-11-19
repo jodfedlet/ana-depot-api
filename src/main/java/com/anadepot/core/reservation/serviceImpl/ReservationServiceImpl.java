@@ -22,6 +22,9 @@ import com.anadepot.core.shared.ActorKind;
 import com.anadepot.core.shared.AuditEvent;
 import com.anadepot.core.shared.AuditRecorder;
 import com.anadepot.core.shared.DomainEvent;
+import com.anadepot.core.notification.model.NotificationRequest;
+import com.anadepot.core.notification.model.NotificationType;
+import com.anadepot.core.notification.service.NotificationRecorder;
 import com.anadepot.core.shared.DomainEventRecorder;
 import com.anadepot.core.shared.DomainRuleViolation;
 import com.anadepot.core.shared.Fingerprint;
@@ -58,6 +61,7 @@ public class ReservationServiceImpl implements ReservationService {
 	private final AuditRecorder audit;
 	private final DomainEventRecorder events;
 	private final OperationMetrics metrics;
+	private final NotificationRecorder notifications;
 	private final IdempotencyService idempotency;
 	private final TransactionBoundary tx;
 	private final Clock clock;
@@ -66,8 +70,9 @@ public class ReservationServiceImpl implements ReservationService {
 
 	public ReservationServiceImpl(ReservationRepository reservations, InventoryRepository inventory, CatalogService catalog,
 			CustomerRepository customers, AuditRecorder audit, DomainEventRecorder events, OperationMetrics metrics,
-			IdempotencyService idempotency, TransactionBoundary tx, Clock clock, PickupSnapshotProvider pickup) {
+			IdempotencyService idempotency, TransactionBoundary tx, Clock clock, PickupSnapshotProvider pickup, NotificationRecorder notifications) {
 		this.pickup = pickup;
+		this.notifications = notifications;
 		this.reservations = reservations;
 		this.inventory = inventory;
 		this.catalog = catalog;
@@ -228,6 +233,20 @@ public class ReservationServiceImpl implements ReservationService {
 				.orElseThrow(() -> new DomainRuleViolation("inventory_not_configured", "No stock position exists for product " + key.productId()));
 	}
 
+	/** The customer message of a reservation event; null for events customers are not mailed about (internal notes). */
+	private static NotificationType notificationOf(String eventType) {
+		return switch (eventType) {
+			case "reservation.submitted" -> NotificationType.RESERVATION_SUBMITTED;
+			case "reservation.confirmed" -> NotificationType.RESERVATION_CONFIRMED;
+			case "reservation.rejected" -> NotificationType.RESERVATION_REJECTED;
+			case "reservation.ready_for_pickup" -> NotificationType.RESERVATION_READY_FOR_PICKUP;
+			case "reservation.collected" -> NotificationType.RESERVATION_COLLECTED;
+			case "reservation.cancelled" -> NotificationType.RESERVATION_CANCELLED;
+			case "reservation.expired" -> NotificationType.RESERVATION_EXPIRED;
+			default -> null;
+		};
+	}
+
 	private void record(Reservation r, String eventType, String auditAction, Actor actor, ReservationStatus before, String reason) {
 		Map<String, Object> payload = new LinkedHashMap<>();
 		payload.put("reference", r.reference());
@@ -237,6 +256,11 @@ public class ReservationServiceImpl implements ReservationService {
 		r.totals().amounts().forEach(m -> totals.put(m.currency().name(), m.amount().toPlainString()));
 		payload.put("totals", totals); // no personal data in events: consumers load the reservation by id
 		events.record(new DomainEvent(eventType, "reservation", r.id(), r.history().size(), payload));
+		// The customer message is recorded in THIS transaction (it commits or rolls back with the operation) and is sent later by the dispatcher, never here.
+		var notification = notificationOf(eventType);
+		if (notification != null) {
+			notifications.record(NotificationRequest.reservation(notification, r.id(), r.locale(), r.contact().email()));
+		}
 		Map<String, Object> previous = before == null ? Map.of() : Map.of("status", before.name());
 		audit.record(AuditEvent.of(auditAction, "reservation", r.id(), actor, previous, Map.of("status", r.status().name(), "reference", r.reference()), reason));
 		metrics.count("reservation." + r.status().name().toLowerCase());

@@ -124,6 +124,37 @@ ana:
     return-base-url: ${ANA_STRIPE_RETURN_BASE_URL:}             # web origin customers return to (https; http only for localhost)
     checkout-expiration-minutes: ${ANA_STRIPE_CHECKOUT_EXPIRATION_MINUTES:30}
     api-base: ${ANA_STRIPE_API_BASE:}                           # only to point a local test double at the SDK; leave empty
+  mail:                                                          # customer e-mail (docs/notifications.md); EVERY value comes from the environment, nothing real is committed
+    mode: ${ANA_MAIL_MODE:log}                                   # smtp = send | log = development: write .eml files, send nothing (rows end CAPTURED) | disabled = queue and do NOT send
+    from-address: ${ANA_MAIL_FROM_ADDRESS:}
+    from-name: ${ANA_MAIL_FROM_NAME:Ana Dépôt}
+    reply-to: ${ANA_MAIL_REPLY_TO:}
+    web-base-url: ${ANA_WEB_BASE_URL:}                           # storefront origin for the tracking link; empty = the e-mail explains in words (no link is invented)
+    terms-url: ${ANA_MAIL_TERMS_URL:}                            # optional legal links; shown only when set
+    privacy-url: ${ANA_MAIL_PRIVACY_URL:}
+    capture-directory: ${ANA_MAIL_CAPTURE_DIR:target/mail-capture}
+    per-recipient-per-hour: ${ANA_MAIL_PER_RECIPIENT_PER_HOUR:10}
+    smtp:
+      host: ${ANA_MAIL_SMTP_HOST:}
+      port: ${ANA_MAIL_SMTP_PORT:587}
+      username: ${ANA_MAIL_SMTP_USERNAME:}
+      password: ${ANA_MAIL_SMTP_PASSWORD:}                       # secret: environment or secret manager only
+      auth: ${ANA_MAIL_SMTP_AUTH:true}
+      starttls: ${ANA_MAIL_SMTP_STARTTLS:true}
+      ssl: ${ANA_MAIL_SMTP_SSL:false}
+      connection-timeout: ${ANA_MAIL_SMTP_CONNECTION_TIMEOUT:5s}
+      read-timeout: ${ANA_MAIL_SMTP_READ_TIMEOUT:10s}
+      write-timeout: ${ANA_MAIL_SMTP_WRITE_TIMEOUT:10s}
+    dispatcher:
+      enabled: ${ANA_MAIL_DISPATCHER_ENABLED:true}
+      poll-interval: ${ANA_MAIL_POLL_INTERVAL:PT5S}
+      batch-size: 20
+      max-attempts: ${ANA_MAIL_MAX_ATTEMPTS:8}                   # then DEAD (visible to staff, retry by hand)
+      initial-backoff: ${ANA_MAIL_INITIAL_BACKOFF:PT1M}           # first retry delay (doubles each time, jittered, capped by max-backoff)
+      backoff-multiplier: 2.0
+      max-backoff: PT6H
+      lease: PT2M
+      max-age: ${ANA_MAIL_MAX_AGE:72h}                           # a message older than this is not sent any more (it would no longer be true)
   outbox:
     dispatcher-enabled: true
   upload:

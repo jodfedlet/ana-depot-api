@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<!--/* reservation-collected: reference, intro, payments, balances. Layout, colours and every block live in html/fragments.html. */-->
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/fragments :: layout(#{email.collected.title}, #{email.collected.preheader}, ~{::main})}">
+<body>
+<th:block th:fragment="main">
+<th:block th:replace="~{html/fragments :: referenceBox}"></th:block>
+<p th:replace="~{html/fragments :: paragraph(#{email.collected.intro})}"></p>
+<th:block th:replace="~{html/fragments :: payments}"></th:block>
+<th:block th:replace="~{html/fragments :: balances}"></th:block>
+</th:block>
+</body>
+</html>

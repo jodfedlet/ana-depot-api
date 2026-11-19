@@ -31,6 +31,7 @@ DTOs are separate from JPA entities and from domain objects. Search specifics: [
 | `GET /api/v1/me/profile`, `PUT /api/v1/me/profile` | any token | `account.read` / `account.write` | own customer profile |
 | `GET /api/v1/me/reservations`, `GET /api/v1/me/reservations/{id}` | any token | `account.read` | own reservations only |
 | `GET /api/v1/admin/settings/pickup`, `PUT /api/v1/admin/settings/pickup` | staff | `admin.write` (PUT) | pickup configuration |
+| `GET /api/v1/admin/notifications`, `GET .../summary`, `POST .../{id}/retry` | staff | `admin.write` (retry) | customer e-mail log, status counts and the retry of a message that gave up (see "Customer e-mail notifications") |
 | `/api/v1/admin/staff` (GET, PUT `/{userId}`), `/api/v1/admin/staff/invitations` (GET, POST, DELETE `/{id}`) | staff | `admin.write` (writes) | team members and one-time invitations (see "Team") |
 | `POST /api/v1/admin/catalog/search/reindex` | staff | `admin.reindex` | rebuild the search index |
 | `POST /api/v1/admin/products/{id}/images/uploads` | staff | `upload.request` | request an image upload ticket |
@@ -313,6 +314,11 @@ Query: `from`, `to` (`yyyy-MM-dd`, both inclusive; default: the last 30 days), `
 * `GET /admin/reports/products?currency=&limit=10` -> `{ period, rows[{ productId, name, sku, currency, quantity, revenue, reservations }] }`, ranked inside each currency by revenue then units, `limit` (1-100) rows per currency; names are the reservation snapshots.
 * `GET /admin/reports/reservations` -> `{ period, byStatus, total, rejectionReasons{code:n} }` (reservations created in the period, by current status).
 * `GET /admin/reports/stock` -> `{ stock{…}, activeProducts }` (now). Not implemented: stock valuation (no cost data exists), average processing times.
+
+### Customer e-mail notifications `/admin/notifications` (docs/notifications.md)
+* `GET /admin/notifications?status,type,reservationId,page,size` -> page of `{ id, type, reservationId, reservationReference, recipient (MASKED, "m***@example.com"), status, attempts, lastError (a short code), nextAttemptAt, createdAt, sentAt }`. `status`: PENDING, PROCESSING, RETRY, SENT, DEAD, CAPTURED, SKIPPED_NO_RECIPIENT, SKIPPED_INVALID_RECIPIENT, SKIPPED_THROTTLED. `type`: RESERVATION_SUBMITTED, _CONFIRMED, _REJECTED, _READY_FOR_PICKUP, _COLLECTED, _CANCELLED, _EXPIRED, PAYMENT_RECEIVED, PAYMENT_FAILED, CHECKOUT_EXPIRED. An unknown filter value is `422 filter_invalid`.
+* `GET /admin/notifications/summary` -> `{ counts{status:n}, mode SMTP|LOG|DISABLED, oldestWaitingAt }`. `LOG` = development (nothing is sent), `DISABLED` = messages wait.
+* `POST /admin/notifications/{id}/retry` -> the message back in the queue (`PENDING`, attempts 0). Only a DEAD message: otherwise `409 notification_not_retryable`; unknown id 404. Audited `NOTIFICATION_RETRY_REQUESTED`. The response never contains the address, the body or any mail-server detail.
 
 ### Team `/admin/staff` (membership is all-or-nothing: roles are an open decision, D14 in docs/decisions.md)
 * `GET /admin/staff` -> `[{ userId, active, you, initial, displayName?, email?, note, joinedAt, updatedAt? }]`. `displayName`/`email` come from the person's customer profile when they have one; otherwise `note` (what the inviter wrote) identifies them. `initial`: provisioned from configuration, not invited.

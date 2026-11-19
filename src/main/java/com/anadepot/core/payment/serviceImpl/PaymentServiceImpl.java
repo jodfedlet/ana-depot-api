@@ -46,9 +46,12 @@ public class PaymentServiceImpl implements PaymentService {
 	private final IdempotencyService idempotency;
 	private final TransactionBoundary tx;
 	private final Clock clock;
+	private final com.anadepot.core.notification.service.NotificationRecorder notifications;
 
 	public PaymentServiceImpl(PaymentRepository payments, ReservationRepository reservations, AuditRecorder audit, DomainEventRecorder events,
-			OperationMetrics metrics, CorrelationContext correlation, IdempotencyService idempotency, TransactionBoundary tx, Clock clock) {
+			OperationMetrics metrics, CorrelationContext correlation, IdempotencyService idempotency, TransactionBoundary tx, Clock clock,
+			com.anadepot.core.notification.service.NotificationRecorder notifications) {
+		this.notifications = notifications;
 		this.payments = payments;
 		this.reservations = reservations;
 		this.audit = audit;
@@ -186,6 +189,10 @@ public class PaymentServiceImpl implements PaymentService {
 		payload.put("currency", amount.currency().name());
 		payload.put("paymentStatus", r.paymentStatus().name());
 		events.record(new DomainEvent(eventType, "reservation", r.id(), r.history().size(), payload));
+		if ("payment.recorded".equals(eventType)) {
+			// A payment RECORDED in the ledger (cash by staff, or a verified provider payment): this is the only source of a receipt, so no receipt can exist for unconfirmed money.
+			notifications.record(com.anadepot.core.notification.model.NotificationRequest.payment(r.id(), subjectId, r.locale(), r.contact().email()));
+		}
 		var current = new LinkedHashMap<String, Object>();
 		current.put("amount", amount.toString());
 		current.put("paymentStatus", r.paymentStatus().name());

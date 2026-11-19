@@ -48,9 +48,12 @@ public class OnlinePaymentServiceImpl implements OnlinePaymentService {
 	private final OperationMetrics metrics;
 	private final TransactionBoundary tx;
 	private final Clock clock;
+	private final com.anadepot.core.notification.service.NotificationRecorder notifications;
 
 	public OnlinePaymentServiceImpl(PaymentAttemptRepository attempts, ReservationRepository reservations, CustomerRepository customers, PaymentService payments,
-			CheckoutGateway gateway, IdempotencyService idempotency, OperationMetrics metrics, TransactionBoundary tx, Clock clock) {
+			CheckoutGateway gateway, IdempotencyService idempotency, OperationMetrics metrics, TransactionBoundary tx, Clock clock,
+			com.anadepot.core.notification.service.NotificationRecorder notifications) {
+		this.notifications = notifications;
 		this.attempts = attempts;
 		this.reservations = reservations;
 		this.customers = customers;
@@ -226,10 +229,10 @@ public class OnlinePaymentServiceImpl implements OnlinePaymentService {
 				return settle(e, current, reservation);
 			}
 			case SESSION_ASYNC_FAILED -> {
-				return terminal(current, AttemptStatus.FAILED, e.failureCode());
+				return terminal(current, AttemptStatus.FAILED, e.failureCode(), reservation);
 			}
 			case SESSION_EXPIRED -> {
-				return terminal(current, AttemptStatus.EXPIRED, null);
+				return terminal(current, AttemptStatus.EXPIRED, null, reservation);
 			}
 			case PAYMENT_FAILED -> {
 				// the customer may still retry inside the same session: only remember why, the attempt stays open
@@ -249,10 +252,15 @@ public class OnlinePaymentServiceImpl implements OnlinePaymentService {
 		return "PROCESSING";
 	}
 
-	private String terminal(PaymentAttempt a, AttemptStatus next, String failureCode) {
+	private String terminal(PaymentAttempt a, AttemptStatus next, String failureCode, Reservation reservation) {
 		if (a.status() == AttemptStatus.SUCCEEDED) {
 			attempts.update(a);
 			return "IGNORED_SUCCEEDED"; // the money moved: a later failure or expiry notification can never undo it
+		}
+		if (a.status() == AttemptStatus.PENDING || a.status() == AttemptStatus.PROCESSING) {
+			// The first verified provider event that ENDS this checkout tells the customer (once: the dedupe key is the attempt). A duplicate or a later contradictory event adds no second message.
+			var type = next == AttemptStatus.FAILED ? com.anadepot.core.notification.model.NotificationType.PAYMENT_FAILED : com.anadepot.core.notification.model.NotificationType.CHECKOUT_EXPIRED;
+			notifications.record(com.anadepot.core.notification.model.NotificationRequest.attempt(type, reservation.id(), a.id(), reservation.locale(), reservation.contact().email()));
 		}
 		var updated = a.withStatus(next, clock.instant());
 		attempts.update(failureCode == null ? updated : updated.withFailure(failureCode, clock.instant()));

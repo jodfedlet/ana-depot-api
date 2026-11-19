@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<!--/* payment-failed: reference, intro, attemptDetail, balances, paymentOptions, track. Layout, colours and every block live in html/fragments.html. */-->
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/fragments :: layout(#{email.paymentFailed.title}, #{email.paymentFailed.preheader}, ~{::main})}">
+<body>
+<th:block th:fragment="main">
+<th:block th:replace="~{html/fragments :: referenceBox}"></th:block>
+<p th:replace="~{html/fragments :: paragraph(#{email.paymentFailed.intro})}"></p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px 0;"><tr><td bgcolor="#f6f2eb" style="background:#f6f2eb;border:1px solid #e5dfd4;border-radius:6px;padding:14px 16px;">
+  <div style="font-size:13px;color:#55524b;" th:text="#{email.attempt.amount}">Montant du paiement tenté</div>
+  <div style="font-size:22px;font-weight:bold;color:#0b3732;" th:text="${v.attempt().amount()}">0,00 USD</div>
+  <div style="font-size:14px;color:#55524b;" th:text="#{email.attempt.notRecorded}">Aucun paiement n'est enregistré pour ce montant.</div>
+</td></tr></table>
+<th:block th:replace="~{html/fragments :: balances}"></th:block>
+<th:block th:replace="~{html/fragments :: paymentOptions}"></th:block>
+<p th:replace="~{html/fragments :: paragraph(#{email.track.text})}"></p>
+<table th:replace="~{html/fragments :: button(${v.trackUrl()}, #{email.track.button})}"></table>
+</th:block>
+</body>
+</html>

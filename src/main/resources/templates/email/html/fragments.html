@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<!--/*
+  Shared building blocks of every customer e-mail. Rules: tables and inline styles only (no external CSS, no JavaScript, no remote images: they are blocked or stripped by many clients),
+  every value printed with th:text (escaped, never th:utext), brand colours of the storefront: warm canvas #fbf9f6, deep teal #0b3732 / #0f4640, terracotta #b5441b, ink #1c1b19.
+  Contrast: white on #0b3732 and on #b5441b, #1c1b19 and #55524b on white are all above 4.5:1.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!--/* layout(title, preheader, content): the whole document */-->
+<th:block th:fragment="layout(title, preheader, content)">
+<html th:lang="${#locale.language}" lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="x-apple-disable-message-reformatting"/>
+  <meta name="color-scheme" content="light"/>
+  <title th:text="${title}">Ana Dépôt</title>
+  <style>
+    body { margin:0; padding:0; background:#fbf9f6; }
+    a { color:#0f4640; }
+    @media only screen and (max-width: 620px) {
+      .container { width:100% !important; }
+      .pad { padding-left:18px !important; padding-right:18px !important; }
+      .stack { display:block !important; width:100% !important; text-align:left !important; }
+      .hide-mobile { display:none !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background:#fbf9f6;font-family:Arial,Helvetica,sans-serif;color:#1c1b19;">
+  <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;" th:text="${preheader}">preheader</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fbf9f6;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+        <tr><td bgcolor="#0b3732" style="background:#0b3732;padding:18px 24px;border-radius:8px 8px 0 0;" class="pad">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td bgcolor="#b5441b" width="36" height="36" align="center" style="background:#b5441b;color:#ffffff;font-family:Georgia,'Times New Roman',serif;font-size:15px;font-weight:bold;border-radius:6px;" aria-hidden="true">AD</td>
+            <td style="padding-left:12px;color:#ffffff;font-family:Georgia,'Times New Roman',serif;font-size:22px;" th:text="${v.brandName()}">Ana Dépôt</td>
+          </tr></table>
+        </td></tr>
+        <tr><td height="4" style="height:4px;line-height:4px;font-size:4px;background:#b5441b;">&nbsp;</td></tr>
+        <tr><td bgcolor="#ffffff" style="background:#ffffff;padding:28px 24px;border:1px solid #e5dfd4;border-top:0;" class="pad">
+          <h1 style="margin:0 0 16px 0;font-family:Georgia,'Times New Roman',serif;font-size:24px;line-height:30px;color:#0b3732;font-weight:normal;" th:text="${title}">Title</h1>
+          <p style="margin:0 0 18px 0;font-size:16px;line-height:24px;" th:if="${!#strings.isEmpty(v.firstName())}" th:text="#{email.greeting(${v.firstName()})}">Bonjour,</p>
+          <p style="margin:0 0 18px 0;font-size:16px;line-height:24px;" th:if="${#strings.isEmpty(v.firstName())}" th:text="#{email.greeting.anonymous}">Bonjour,</p>
+          <th:block th:replace="${content}">content</th:block>
+          <th:block th:replace="~{html/fragments :: support}"></th:block>
+        </td></tr>
+        <tr><td style="padding:18px 24px;font-size:13px;line-height:19px;color:#55524b;" class="pad">
+          <p style="margin:0 0 8px 0;" th:text="#{email.footer.auto(${v.reference()})}">Message automatique.</p>
+          <p style="margin:0 0 8px 0;" th:text="#{email.footer.notyou}">Si vous n'êtes pas à l'origine de cette réservation, ignorez ce message.</p>
+          <p style="margin:0;" th:if="${v.termsUrl() != null or v.privacyUrl() != null}">
+            <a th:if="${v.termsUrl() != null}" th:href="${v.termsUrl()}" th:text="#{email.footer.terms}" style="color:#0f4640;">Conditions</a>
+            <span th:if="${v.termsUrl() != null and v.privacyUrl() != null}"> · </span>
+            <a th:if="${v.privacyUrl() != null}" th:href="${v.privacyUrl()}" th:text="#{email.footer.privacy}" style="color:#0f4640;">Confidentialité</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+</th:block>
+
+<!--/* paragraph(text) */-->
+<p th:fragment="paragraph(text)" style="margin:0 0 18px 0;font-size:16px;line-height:24px;" th:text="${text}">text</p>
+
+<!--/* button(url, label): a bulletproof button; nothing is rendered without a URL (the link is never invented) */-->
+<table th:fragment="button(url, label)" th:if="${url != null}" role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 20px 0;">
+  <tr><td bgcolor="#b5441b" style="background:#b5441b;border-radius:6px;">
+    <a th:href="${url}" th:text="${label}" style="display:inline-block;padding:13px 22px;font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;">Button</a>
+  </td></tr>
+</table>
+
+<!--/* referenceBox(): the reservation reference, always present */-->
+<table th:fragment="referenceBox" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px 0;">
+  <tr><td bgcolor="#f6f2eb" style="background:#f6f2eb;border:1px solid #e5dfd4;border-radius:6px;padding:14px 16px;">
+    <div style="font-size:13px;color:#55524b;" th:text="#{email.reference.label}">Référence</div>
+    <div style="font-size:22px;font-weight:bold;letter-spacing:1px;color:#0b3732;" th:text="${v.reference()}">ANA-XXXXXX</div>
+    <div style="font-size:13px;color:#55524b;margin-top:4px;" th:text="#{email.submitted.on(${v.createdOn()})}">date</div>
+  </td></tr>
+</table>
+
+<!--/* items(): the lines as snapshotted, each in its own currency */-->
+<th:block th:fragment="items">
+  <h2 style="margin:22px 0 8px 0;font-size:17px;color:#0b3732;" th:text="#{email.section.items}">Vos produits</h2>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+    <tr th:each="l : ${v.lines()}">
+      <td style="padding:10px 0;border-bottom:1px solid #e5dfd4;font-size:15px;line-height:21px;vertical-align:top;">
+        <div style="font-weight:bold;" th:text="${l.name()}">Produit</div>
+        <div style="color:#55524b;font-size:14px;" th:if="${!#strings.isEmpty(l.variant())}" th:text="${l.variant()}">Variante</div>
+        <div style="color:#55524b;font-size:14px;" th:text="#{email.line.qty(${l.quantity()}, #{${'email.unit.' + l.unit()}}, ${l.unitPrice()})}">2 × 100 HTG</div>
+      </td>
+      <td align="right" style="padding:10px 0 10px 12px;border-bottom:1px solid #e5dfd4;font-size:15px;font-weight:bold;vertical-align:top;white-space:nowrap;" th:text="${l.subtotal()}">200 HTG</td>
+    </tr>
+  </table>
+</th:block>
+
+<!--/* totals(): ONE total per currency, never a combined figure */-->
+<th:block th:fragment="totals">
+  <h2 style="margin:22px 0 8px 0;font-size:17px;color:#0b3732;" th:text="#{email.section.totals}">Total par devise</h2>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr th:each="t : ${v.totals()}">
+      <td style="padding:4px 0;font-size:16px;" th:text="${t.currency()}">HTG</td>
+      <td align="right" style="padding:4px 0;font-size:18px;font-weight:bold;color:#0b3732;" th:text="${t.amount()}">0,00</td>
+    </tr>
+  </table>
+  <p style="margin:6px 0 0 0;font-size:13px;color:#55524b;" th:text="#{email.totals.note}">Chaque devise est comptée séparément.</p>
+  <div style="height:14px;line-height:14px;font-size:14px;" aria-hidden="true">&nbsp;</div>
+</th:block>
+
+<!--/* balances(): what is still to pay, per currency, independently */-->
+<th:block th:fragment="balances">
+  <h2 style="margin:22px 0 8px 0;font-size:17px;color:#0b3732;" th:text="#{email.section.balances}">Reste à payer</h2>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+    <tr th:each="b : ${v.balances()}">
+      <td style="padding:8px 0;border-bottom:1px solid #e5dfd4;font-size:15px;vertical-align:top;">
+        <div style="font-weight:bold;" th:text="${b.currency()}">HTG</div>
+        <div style="font-size:13px;color:#55524b;" th:text="#{email.balance.detail(${b.total()}, ${b.paid()})}">Total / reçu</div>
+      </td>
+      <td align="right" style="padding:8px 0;border-bottom:1px solid #e5dfd4;font-size:16px;font-weight:bold;vertical-align:top;">
+        <span th:if="${b.settled()}" style="color:#0f4640;" th:text="#{email.balance.settled}">Réglé</span>
+        <span th:unless="${b.settled()}" style="color:#983816;" th:text="${b.due()}">0,00</span>
+      </td>
+    </tr>
+  </table>
+  <div style="height:14px;line-height:14px;font-size:14px;" aria-hidden="true">&nbsp;</div>
+</th:block>
+
+<!--/* paymentOptions(): only the methods that really exist right now */-->
+<th:block th:fragment="paymentOptions">
+  <h2 style="margin:22px 0 8px 0;font-size:17px;color:#0b3732;" th:text="#{email.section.paymentOptions}">Comment payer</h2>
+  <p style="margin:0 0 8px 0;font-size:15px;line-height:22px;" th:if="${v.cardAvailable()}" th:text="#{email.pay.both}">Carte ou magasin</p>
+  <p style="margin:0 0 8px 0;font-size:15px;line-height:22px;" th:if="${!v.cardAvailable() and v.pickupPayAvailable()}" th:text="#{email.pay.pickup}">Au magasin</p>
+  <div style="height:14px;line-height:14px;font-size:14px;" aria-hidden="true">&nbsp;</div>
+</th:block>
+
+<!--/* pickup(): the pickup details exactly as snapshotted on the reservation; a clear statement when there are none */-->
+<th:block th:fragment="pickup">
+  <h2 style="margin:22px 0 8px 0;font-size:17px;color:#0b3732;" th:text="#{email.section.pickup}">Retrait</h2>
+  <div th:if="${v.pickup() != null}" style="font-size:15px;line-height:22px;">
+    <div style="font-weight:bold;" th:text="${v.pickup().storeName()}">Magasin</div>
+    <div th:if="${!#strings.isEmpty(v.pickup().address())}" th:text="${v.pickup().address()}">Adresse</div>
+    <div th:if="${!#strings.isEmpty(v.pickup().phone())}" th:text="${v.pickup().phone()}">Téléphone</div>
+    <table th:if="${!#lists.isEmpty(v.pickup().hours())}" role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 0 0;font-size:14px;color:#55524b;">
+      <tr th:each="h : ${v.pickup().hours()}"><td th:text="${h}" style="padding:1px 0;">Lundi : 09:00 – 17:00</td></tr>
+    </table>
+    <p th:if="${!#strings.isEmpty(v.pickup().info())}" style="margin:10px 0 0 0;color:#55524b;" th:text="${v.pickup().info()}">Info</p>
+    <p th:if="${!#strings.isEmpty(v.pickup().instructions())}" style="margin:10px 0 0 0;" th:text="${v.pickup().instructions()}">Instructions</p>
+  </div>
+  <p th:if="${v.pickup() == null}" style="margin:0;font-size:15px;line-height:22px;" th:text="#{email.pickup.pending}">Les informations de retrait seront confirmées.</p>
+  <div style="height:14px;line-height:14px;font-size:14px;" aria-hidden="true">&nbsp;</div>
+</th:block>
+
+<!--/* payments(): money actually recorded, each in its own currency and labelled with its real method */-->
+<th:block th:fragment="payments">
+  <h2 style="margin:22px 0 8px 0;font-size:17px;color:#0b3732;" th:text="#{email.section.payments}">Paiements enregistrés</h2>
+  <table th:if="${!#lists.isEmpty(v.payments())}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+    <tr th:each="p : ${v.payments()}">
+      <td style="padding:8px 0;border-bottom:1px solid #e5dfd4;font-size:14px;vertical-align:top;">
+        <div th:text="#{${p.methodKey()}}">Méthode</div>
+        <div style="color:#55524b;" th:text="${p.date()}">date</div>
+      </td>
+      <td align="right" style="padding:8px 0;border-bottom:1px solid #e5dfd4;font-size:15px;font-weight:bold;vertical-align:top;white-space:nowrap;" th:text="${p.amount()}">0,00</td>
+    </tr>
+  </table>
+  <p th:if="${#lists.isEmpty(v.payments())}" style="margin:0;font-size:15px;" th:text="#{email.payments.none}">Aucun paiement enregistré.</p>
+  <div style="height:14px;line-height:14px;font-size:14px;" aria-hidden="true">&nbsp;</div>
+</th:block>
+
+<!--/* support(): contact details exactly as configured by the store; nothing at all when none are configured */-->
+<th:block th:fragment="support">
+  <div th:if="${v.support().present()}" style="margin-top:26px;padding-top:16px;border-top:1px solid #e5dfd4;font-size:14px;line-height:21px;color:#55524b;">
+    <div style="font-weight:bold;color:#1c1b19;" th:text="#{email.support.title}">Une question ?</div>
+    <div th:text="#{email.support.text}">Contactez le magasin :</div>
+    <div th:if="${!#strings.isEmpty(v.support().email())}"><a th:href="'mailto:' + ${v.support().email()}" th:text="${v.support().email()}" style="color:#0f4640;">email</a></div>
+    <div th:if="${!#strings.isEmpty(v.support().phone())}" th:text="${v.support().phone()}">phone</div>
+  </div>
+</th:block>
+
+</body>
+</html>

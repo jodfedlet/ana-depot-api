@@ -128,3 +128,25 @@ No refund exists: there is no approved refund policy, so there is no refund endp
 | What staff see | Payments with a Stripe/cash badge, attempts (including failed ones and `requires_attention`), per-reservation reconciliation (cached paid vs ledger), and the payments report split by method and currency. | n/a |
 
 All of these use the local fake Stripe or the mocked gateway: MOCKED/LOCAL evidence, never hosted Stripe verification. The decisions are in [decisions.md](decisions.md).
+
+## Verification map (2026-11-18): each requirement and the test that proves it
+Label for every row below: **MOCKED/FAKE** (mocked gateway or local fake Stripe, real PostgreSQL and security chain). Nothing here is hosted Stripe verification.
+
+| Requirement | Proven by |
+|---|---|
+| Checkout Sessions: created for exactly one currency, amount from the ledger, idempotent per attempt | `OnlinePaymentIntegrationTest.theAmountComesFromTheBackendNeverFromTheClient`, `aSecondRequestReturnsTheOpenSessionInsteadOfCreatingAnother`, `theSameKeyWithAnotherCurrencyIsRefused…`, `simultaneousCheckoutRequestsShareOneOpenAttempt`; `StripeGatewayConfigTest` |
+| Payment capability response (card available / disabled / temporarily unavailable, pay-at-pickup, summary) | `theBackendStatesWhichPaymentOptionsExistRightNow`, `whenPickupIsClosedNoPaymentMethodIsAvailable…`, `paymentOptionsListOnlyEligibleCurrenciesAndNullWhenOff`; web `capabilities.test.ts`, `e2e:payment-messaging` |
+| HTG and USD separation | `aVerifiedPaymentIsPostedOnceAndSettlesOnlyItsOwnCurrency`, `aCurrencyTheProviderCannotProcessIsRefusedAndNeverConverted`, `MoneyTest`, `PaymentLedgerIntegrationTest` |
+| Customer payment history and remaining balances | `theCustomerSeesTheirPaymentHistory…`, `map-reservation.test.ts`, `e2e:stripe-real` |
+| Cash and Stripe reporting | `AdminReportApiIntegrationTest` (payments report), `…StaffSeeTheMethodSplit…` (receivedByMethod), admin payments screen in `e2e:admin` |
+| Webhook integrity (signature on the raw bytes) | `webhooksWithoutAValidSignatureAreRejectedAndChangeNothing`, `theWebhookIs404WhenStripeIsOff` |
+| Idempotency (checkout key, ledger, webhook event id, payment intent) | `IdempotencyIntegrationTest`, `simultaneousDuplicateDeliveriesPostExactlyOnePayment`, `aVerifiedPaymentIsPostedOnce…` |
+| Duplicate, delayed and out-of-order events | `eventsInAnyOrderNeverUndoAConfirmedPayment`, `anAsynchronousPaymentStaysProcessingUntilConfirmed`, `aPaymentThatArrivesAfterCashSettledTheBalanceIsPostedAndFlaggedNotLost`, `aFailedOrExpiredCheckoutNotifiesOnceAndNeverAfterTheMoneyArrived`, `anEventForAnUnknownSessionIsAcknowledgedAndChangesNothing` |
+| Amount or currency mismatch | `aMismatchedAmountOrCurrencyPostsNothingAndIsFlagged`, `aMismatchedAmountOrCurrencyQueuesNoReceipt` |
+| Failure and retry | `aFailedAsynchronousPaymentMarksNothingPaidAndAllowsANewCheckout`, `anExpiredOrAbandonedSessionKeepsTheReservationAndNeverCancelsIt` |
+| Reservation eligibility | `onlineCheckoutOpensOnlyWhenTheReservationIsReady`, `aSettledCurrencyCannotBePaidAgainOnline`, `disabledStripeCreatesNoSessionAndReservationsStillWork` |
+| Payment and reservation state consistency | `payments.reconcile` asserted after every flow (cached paid = ledger paid), `PaymentLedgerIntegrationTest`, the reservation never changes on a failed/expired checkout |
+| Staff cannot mark or reverse a Stripe payment | `staffCannotRecordOrReverseAStripePaymentAndAttemptsAreStaffOnly` |
+| Customer messages follow only authoritative events | `NotificationFlowIntegrationTest`, `OnlinePaymentIntegrationTest.noReceiptExistsUntil…` (docs/notifications.md) |
+
+**Not verified and cannot be locally:** the real Stripe API, hosted Checkout, HTG presentment and settlement, fees, real webhook delivery and retries from Stripe, the Ana Dépôt merchant account (D5).

@@ -116,6 +116,40 @@ class StaffManagementApiIntegrationTest extends ApiTestSupport {
 	}
 
 	@Test
+	void simultaneousRedemptionsOfOneCodeGrantExactlyOneMember() throws Exception {
+		var owner = newStaffToken();
+		var code = invite(owner, "race").get("code").asString();
+		var contenders = new java.util.ArrayList<UUID>();
+		for (int i = 0; i < 8; i++) {
+			contenders.add(UUID.randomUUID());
+		}
+		var start = new java.util.concurrent.CountDownLatch(1);
+		var pool = java.util.concurrent.Executors.newFixedThreadPool(contenders.size());
+		var futures = new java.util.ArrayList<java.util.concurrent.Future<Integer>>();
+		for (var user : contenders) {
+			futures.add(pool.submit(() -> {
+				start.await();
+				return redeem(user, code);
+			}));
+		}
+		start.countDown();
+		var statuses = new java.util.ArrayList<Integer>();
+		for (var f : futures) {
+			statuses.add(f.get());
+		}
+		pool.shutdown();
+		assertThat(statuses.stream().filter(st -> st == 200).count()).as(statuses.toString()).isEqualTo(1);
+		assertThat(statuses.stream().filter(st -> st == 404).count()).isEqualTo(7);
+		int staffNow = 0;
+		for (var user : contenders) {
+			if (mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(STAFF).header("Authorization", "Bearer " + token(user))).andReturn().getResponse().getStatus() == 200) {
+				staffNow++;
+			}
+		}
+		assertThat(staffNow).isEqualTo(1);                       // exactly one of the eight became a team member
+	}
+
+	@Test
 	void redeemingIsRateLimitedPerAccount() throws Exception {
 		var user = token(UUID.randomUUID());
 		int last = 0;

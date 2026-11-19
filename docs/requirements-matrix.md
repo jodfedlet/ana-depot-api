@@ -124,10 +124,10 @@ Column "Where": FE = `ana-depot-web/src/...`, BE = `ana-depot-api/src/main/java/
 | ID | Requirement | Imp. | Status | Where | Evidence | Gap / action |
 |---|---|---|---|---|---|---|
 | ARC-1 | Modular monolith, two top-level packages, core free of Spring/JPA, service/serviceImpl, JPA only (no JDBC) | High | PASS | — | `ArchitectureTest` (6) | — |
-| ARC-2 | Flyway immutable migrations, RLS on every table, Data API locked down | Critical | PASS (local) | V1–V15 | `FlywayMigrationIntegrationTest`, `MigrationRlsConventionTest`, `DataApiLockdownIntegrationTest` | Hosted Supabase not verified |
+| ARC-2 | Flyway immutable migrations, RLS on every table, Data API locked down | Critical | PASS (local) | V1–V16 | `FlywayMigrationIntegrationTest`, `MigrationRlsConventionTest`, `DataApiLockdownIntegrationTest` | Hosted Supabase not verified |
 | ARC-3 | Outbox, idempotency, dedup, bounded retries, observability | High | PASS | ADRs 0002–0010 | `OutboxIntegrationTest`, `DeduplicationIntegrationTest`, `RetryPolicyTest`, `ObservabilityIntegrationTest` | — |
 | PER-1 | No N+1 on list endpoints | High | PASS | — | `QueryCountIntegrationTest` (statement counts at two data sizes) | Added in this program |
-| PER-2 | Request latency <= 1 s | High | PARTIAL | `CatalogSearchPerformanceTest` (opt-in), `ana-depot-web/scripts/measure-latency.mjs` | MEASURED (Testcontainers PostgreSQL 17, use-case level): search over **20,000 products**, 8 scenarios, worst p95 **107.6 ms** (prefix search), worst max 198 ms; plain listing p95 22 ms | **Not measured:** HTTP end-to-end and server-rendered pages under load, because the local browser stack was lost to an interrupted session and not rebuilt; hosted, TLS and mobile-network latency. Run `node scripts/measure-latency.mjs` (web repo) on a seeded stack to close it |
+| PER-2 | Request latency <= 1 s | High | PASS (local, sequential) / hosted NOT measured | `CatalogSearchPerformanceTest` (opt-in), `ana-depot-web/scripts/measure-latency.mjs`, `docs/performance.md` | MEASURED over HTTP on the seeded local stack (20 products, 12-CPU machine, 30 samples per route): **34 routes (17 API reads, 11 server-rendered pages, 6 writes: reservation submit, tracking lookup, accept, ready, cash payment, collect), 0 over the 1 s target, slowest p95 64 ms**. Search over **20,000 products** (use-case level): worst p95 107.6 ms | **Not measured:** concurrent load, large reservation/payment tables, hosted + TLS + mobile-network latency, cold start |
 | OPS-1 | Health, readiness, metrics on a private port, timeouts, graceful shutdown, container image | High | PASS (local) | `docs/operations.md`, `Dockerfile` | `ManagementPortIntegrationTest`, `StorageHealthIndicatorTest`; image built and run | Hosted/restore drills: staging |
 
 ## Inconsistencies found
@@ -140,16 +140,24 @@ Column "Where": FE = `ana-depot-web/src/...`, BE = `ana-depot-api/src/main/java/
 Hosted Supabase (migrations, RLS on the hosted Data API, TOTP setting, SMTP), real Cloudflare R2, real Stripe (any country), TLS/HSTS/edge behaviour, monitoring/alerts, backup restore timing, Safari/Firefox/physical devices. See `docs/staging/`.
 
 ## Test results (this program; exact counts)
+Run on the final code: API `534191e`, web `9ab935a` (the runtime code of both is unchanged since the e-mail commits; the last three commits changed docs and test files only). Local stack: local Supabase (GoTrue, TOTP on), MinIO standing in for R2, fake Stripe, Mailpit as the SMTP server.
+
 | Suite | Result | Level |
 |---|---|---|
-| API (`mvn test`, all classes) | **454 run, 0 failures, 0 errors, 7 skipped** (432 before; +22: staff 17, payment history, capability states, N+1 guard) | UNIT/INT |
-| Web unit (`vitest`) | **320 passed**, 36 files; `tsc` clean; ESLint 0 errors, 1 pre-existing warning (`public/offline.js`) | UNIT |
-| `e2e:storefront` | 145 / 0 | LOCAL-E2E (final code) |
-| `e2e:admin` | 139 / 0 | LOCAL-E2E (final code) |
-| `e2e:a11y` (new) | 136 page scans, 0 violations (after fixing 4 defect classes it found) | LOCAL-E2E (final code) |
-| `e2e:payment-messaging` (new) | 97 / 0 (capability response stubbed = MOCK; every state x fr/ht, desktop + mobile) | LOCAL-E2E / MOCK |
-| `e2e:pwa` | 56 / 0 | LOCAL-E2E (final code) |
-| `e2e:stripe-real` | 57 / 0 (real API, local FAKE Stripe, real capability answer BOTH) | LOCAL-E2E / FAKE |
-| `e2e:team` (new) | 30 / 0 on two consecutive runs, real GoTrue TOTP; **not re-run on the very last commit** (only the sign-out button style, a11y labels and payment wording changed after it) | LOCAL-E2E |
-| `e2e:stripe` (mocked) | 72 / 0 at the previous baseline; **not re-run on final code** (the local scratch stack was lost to an interrupted session) | MOCK |
+| API (`mvn clean test`, all classes) | **520 run, 0 failures, 0 errors, 7 skipped** (the 7 are opt-in: 6 hosted-R2 tests need `R2_TEST_ENABLED`, 1 search-scale probe needs `-Dsearch.perf`). Includes 62 notification tests in 5 classes (core 6, rendering fr/ht 21, real SMTP via GreenMail 7, flow 22, admin API 6) plus the payment-webhook notification tests in `OnlinePaymentIntegrationTest` | UNIT/INT |
+| Web unit (`vitest`) | **329 passed**, 37 files; `tsc --noEmit` clean; ESLint 0 errors, 2 warnings (unused `_`, pre-existing) | UNIT |
+| `e2e:storefront` | **145 / 0** (the first run on the final stack showed 83 / 13 because the host clock jumped ~16 h mid-run and the suite's cached 1 h staff token expired; the identical code re-run on a stable clock passed 145 / 0) | LOCAL-E2E |
+| `e2e:admin` | **139 / 0** | LOCAL-E2E |
+| `e2e:a11y` | **136 / 0** page scans (axe, 390 and 1280 px, fr + ht) | LOCAL-E2E |
+| `e2e:payment-messaging` | **97 / 0** (capability response stubbed = MOCK; every state x fr/ht, desktop + mobile) | LOCAL-E2E / MOCK |
+| `e2e:pwa` | **56 / 0** | LOCAL-E2E |
+| `e2e:stripe-real` | **57 / 0** (real API, local FAKE Stripe) | LOCAL-E2E / FAKE |
+| `e2e:stripe` (mocked) | **72 / 0** | MOCK |
+| `e2e:notifications` | **34 / 0** (real SMTP into Mailpit: both messages per journey, per-currency totals, fr + ht, masked recipients, outage -> DEAD -> audited resend delivered once) | LOCAL-E2E |
+| `e2e:team` (API with `ANA_STAFF_REQUIRE_MFA=true`) | **30 / 0** (real GoTrue TOTP) | LOCAL-E2E |
+| Request latency | 34 routes, slowest p95 64 ms | MEASURED (local) |
 | Search performance, 20,000 products | worst p95 107.6 ms | MEASURED (local) |
+
+Test defects found and fixed while producing these numbers (no assertion was weakened): `R2AbandonedUploadCleanupIntegrationTest` signed its upload URL for 1 s and failed intermittently (MinIO: "Request has expired"; now a 4 s validity, same assertions); the notifications browser test asserted wording the UI never had ("une seule fois", now "qu'une fois" + "encore d'actualité") and a masked address with the wrong first letter.
+
+**Never run against a hosted service:** Supabase, R2, Stripe (test or live), a real SMTP provider, TLS, monitoring, restore drills. Those rows stay BLOCKED until the staging environment exists.

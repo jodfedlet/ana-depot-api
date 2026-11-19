@@ -40,8 +40,10 @@ class AdminReservationController {
 
 	private final ReservationAdminService admin;
 	private final ReservationService reservations;
+	private final com.anadepot.core.payment.service.PaymentAdminService payments;
 
-	AdminReservationController(ReservationAdminService admin, ReservationService reservations) {
+	AdminReservationController(ReservationAdminService admin, ReservationService reservations, com.anadepot.core.payment.service.PaymentAdminService payments) {
+		this.payments = payments;
 		this.admin = admin;
 		this.reservations = reservations;
 	}
@@ -59,12 +61,12 @@ class AdminReservationController {
 
 	@GetMapping("/{id}")
 	AdminReservationDtos.Detail get(@PathVariable UUID id) {
-		return AdminReservationDtos.detail(admin.get(id));
+		return detail(admin.get(id));
 	}
 
 	@PostMapping("/{id}/accept")
 	AdminReservationDtos.Detail accept(@PathVariable UUID id, @RequestHeader(value = "Idempotency-Key", required = false) String key, Authentication authentication) {
-		return AdminReservationDtos.detail(reservations.accept(id, Actors.staff(authentication), key));
+		return detail(reservations.accept(id, Actors.staff(authentication), key));
 	}
 
 	@PostMapping("/{id}/reject")
@@ -74,18 +76,18 @@ class AdminReservationController {
 			throw new FieldValidationException(List.of(new FieldIssue("reason", "required")));
 		}
 		requireShort("note", body.note(), 1000);
-		return AdminReservationDtos.detail(reservations.reject(id, Actors.staff(authentication), QueryParams.enumOf(RejectReason.class, body.reason(), "reason"), body.note(), key));
+		return detail(reservations.reject(id, Actors.staff(authentication), QueryParams.enumOf(RejectReason.class, body.reason(), "reason"), body.note(), key));
 	}
 
 	@PostMapping("/{id}/ready")
 	AdminReservationDtos.Detail ready(@PathVariable UUID id, @RequestBody(required = false) AdminReservationDtos.ReadyRequest body, @RequestHeader(value = "Idempotency-Key", required = false) String key,
 			Authentication authentication) {
-		return AdminReservationDtos.detail(reservations.markReady(id, Actors.staff(authentication), body == null ? null : body.expiresAt(), key));
+		return detail(reservations.markReady(id, Actors.staff(authentication), body == null ? null : body.expiresAt(), key));
 	}
 
 	@PostMapping("/{id}/collect")
 	AdminReservationDtos.Detail collect(@PathVariable UUID id, @RequestHeader(value = "Idempotency-Key", required = false) String key, Authentication authentication) {
-		return AdminReservationDtos.detail(reservations.collect(id, Actors.staff(authentication), key));
+		return detail(reservations.collect(id, Actors.staff(authentication), key));
 	}
 
 	@PostMapping("/{id}/cancel")
@@ -95,7 +97,7 @@ class AdminReservationController {
 			throw new FieldValidationException(List.of(new FieldIssue("reason", "required")));
 		}
 		requireShort("reason", body.reason(), 1000);
-		return AdminReservationDtos.detail(reservations.cancel(id, Actors.staff(authentication), body.reason(), key));
+		return detail(reservations.cancel(id, Actors.staff(authentication), body.reason(), key));
 	}
 
 	@PostMapping("/{id}/notes")
@@ -112,7 +114,7 @@ class AdminReservationController {
 			throw new FieldValidationException(issues);
 		}
 		var visibility = QueryParams.enumOf(NoteVisibility.class, body.visibility(), "visibility");
-		return ResponseEntity.status(HttpStatus.CREATED).body(AdminReservationDtos.detail(admin.addNote(id, visibility, body.body(), Actors.staff(authentication), key)));
+		return ResponseEntity.status(HttpStatus.CREATED).body(detail(admin.addNote(id, visibility, body.body(), Actors.staff(authentication), key)));
 	}
 
 	private static void requireShort(String field, String value, int max) {
@@ -130,5 +132,10 @@ class AdminReservationController {
 		} catch (DateTimeParseException e) {
 			throw new FieldValidationException(List.of(new FieldIssue(field, "invalid")));
 		}
+	}
+
+	/** The staff view of one reservation, with the D1 "refund due" figures (card money to give back after rejection, cancellation or expiry). */
+	private AdminReservationDtos.Detail detail(com.anadepot.core.reservation.model.Reservation r) {
+		return AdminReservationDtos.detail(r, payments.refundDue(r));
 	}
 }

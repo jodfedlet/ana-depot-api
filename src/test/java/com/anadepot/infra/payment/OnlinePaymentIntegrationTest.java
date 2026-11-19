@@ -455,6 +455,33 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 	}
 
 	@Test
+	void cardMoneyOfAReservationThatEndedWithoutCollectionIsFlaggedAsRefundDue_perCurrencyAndOnlyForCards() throws Exception {   // D1 (owner-approved): refund in the Stripe dashboard + a "refund due" flag
+		var staff = newStaffToken();
+		var r = readyBoth();
+		var attempt = checkout(r, "USD", key(), 201);
+		assertThat(deliver(sessionEvent("evt_due_1", "checkout.session.completed", attempt, "pi_due_1", "18000", "usd", "paid"))).isEqualTo(200);
+		post("/api/v1/admin/reservations/" + r.id() + "/payments", Map.of("amount", "1000.00", "currency", "HTG"), staff, key()).andExpect(status().isCreated());   // cash: never flagged
+		var open = JSON.readTree(get("/api/v1/admin/reservations/" + r.id(), staff).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		assertThat(open.get("refundDue")).as("nothing is due back while the reservation is alive").isEmpty();
+
+		var cancelled = JSON.readTree(post("/api/v1/admin/reservations/" + r.id() + "/cancel", Map.of("reason", "customer asked"), staff, key()).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		assertThat(cancelled.get("status").asString()).isEqualTo("CANCELLED");
+		assertThat(cancelled.get("refundDue")).hasSize(1);
+		assertThat(cancelled.get("refundDue").get(0).get("currency").asString()).isEqualTo("USD");
+		assertThat(cancelled.get("refundDue").get(0).get("amount").asString()).isEqualTo("180.00");
+		var again = JSON.readTree(get("/api/v1/admin/reservations/" + r.id(), staff).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		assertThat(again.get("refundDue").toString()).isEqualTo(cancelled.get("refundDue").toString());   // the same on every read
+
+		var cashOnly = readyBoth();   // a cancelled reservation without a card payment has nothing flagged
+		post("/api/v1/admin/reservations/" + cashOnly.id() + "/cancel", Map.of("reason", "no show"), staff, key()).andExpect(status().isOk());
+		var none = JSON.readTree(get("/api/v1/admin/reservations/" + cashOnly.id(), staff).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		assertThat(none.get("refundDue")).isEmpty();
+		// the customer's own view never carries the flag
+		var view = post("/api/v1/reservations/lookup", Map.of("reference", r.reference(), "phone", phone(r)), null, null).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		assertThat(view).doesNotContain("refundDue");
+	}
+
+	@Test
 	void aMismatchedAmountOrCurrencyPostsNothingAndIsFlagged() throws Exception {
 		var r = readyBoth();
 		var attempt = checkout(r, "USD", key(), 201);

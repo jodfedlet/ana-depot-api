@@ -67,4 +67,27 @@ public class PaymentAdminServiceImpl implements PaymentAdminService {
 		var references = reservations.referencesOf(list.stream().map(Payment::reservationId).distinct().toList());
 		return list.stream().map(p -> new PaymentView(p, references.get(p.reservationId()), reversals.get(p.id()))).toList();
 	}
+
+	@Override
+	public List<com.anadepot.core.shared.money.Money> refundDue(com.anadepot.core.reservation.model.Reservation r) {
+		var ended = switch (r.status()) {
+			case REJECTED, CANCELLED, EXPIRED -> true;
+			default -> false;
+		};
+		if (!ended) {
+			return List.of();
+		}
+		var card = payments.payments(r.id()).stream().filter(p -> p.method() == com.anadepot.core.payment.model.PaymentMethod.STRIPE_CHECKOUT).toList();
+		if (card.isEmpty()) {
+			return List.of();
+		}
+		var reversed = payments.reversalsOf(card.stream().map(com.anadepot.core.payment.model.Payment::id).toList());
+		var perCurrency = new java.util.EnumMap<com.anadepot.core.shared.money.SupportedCurrency, com.anadepot.core.shared.money.Money>(com.anadepot.core.shared.money.SupportedCurrency.class);
+		for (var p : card) {
+			if (!reversed.containsKey(p.id())) {
+				perCurrency.merge(p.amount().currency(), p.amount(), com.anadepot.core.shared.money.Money::plus);
+			}
+		}
+		return List.copyOf(perCurrency.values());
+	}
 }

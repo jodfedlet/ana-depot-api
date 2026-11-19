@@ -94,6 +94,13 @@ public abstract class ApiTestSupport extends AbstractIntegrationTest {
 		return token(id);
 	}
 
+	/** A token of a NEW active staff member with the given role (D14). {@link #newStaffToken()} is an OWNER, like every member before roles existed. */
+	protected String newStaffToken(com.anadepot.core.staff.model.StaffRole role) {
+		var id = UUID.randomUUID();
+		staffDirectory.grant(id, null, "api test " + role, role);
+		return token(id);
+	}
+
 	protected static String json(Object value) {
 		return Json.write(value);
 	}

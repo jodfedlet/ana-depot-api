@@ -41,6 +41,7 @@ class StaffRepositoryAdapter implements StaffRepository {
 		var e = members.findById(member.userId()).orElseGet(StaffMemberEntity::new);
 		e.userId = member.userId();
 		e.active = member.active();
+		e.role = member.role();
 		e.grantedBy = member.grantedBy();
 		e.grantedAt = member.grantedAt();
 		e.note = member.note();
@@ -70,6 +71,7 @@ class StaffRepositoryAdapter implements StaffRepository {
 		e.id = i.id();
 		e.codeHash = i.codeHash();
 		e.note = i.note();
+		e.role = i.role();
 		e.createdBy = i.createdBy();
 		e.createdAt = i.createdAt();
 		e.expiresAt = i.expiresAt();
@@ -81,10 +83,10 @@ class StaffRepositoryAdapter implements StaffRepository {
 	}
 
 	private static StaffMember toDomain(StaffMemberEntity e) {
-		return new StaffMember(e.userId, e.active, e.grantedBy, e.grantedAt, e.note, e.updatedBy, e.updatedAt);
+		return new StaffMember(e.userId, e.active, e.role, e.grantedBy, e.grantedAt, e.note, e.updatedBy, e.updatedAt);
 	}
 
 	private static StaffInvitation toDomain(StaffInvitationEntity e) {
-		return new StaffInvitation(e.id, e.codeHash, e.note, e.createdBy, e.createdAt, e.expiresAt, e.acceptedBy, e.acceptedAt, e.revokedAt, e.revokedBy);
+		return new StaffInvitation(e.id, e.codeHash, e.note, e.role, e.createdBy, e.createdAt, e.expiresAt, e.acceptedBy, e.acceptedAt, e.revokedAt, e.revokedBy);
 	}
 }

@@ -4,12 +4,13 @@ import com.anadepot.core.shared.Actor;
 import com.anadepot.core.staff.model.IssuedInvitation;
 import com.anadepot.core.staff.model.StaffInvitation;
 import com.anadepot.core.staff.model.StaffMember;
+import com.anadepot.core.staff.model.StaffRole;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Who works for the store. All-or-nothing membership (roles are an open business decision). A member is invited with a one-time code; the invitee redeems it while
- * signed in with their own account. Rules: nobody can change their own access, and the last active member can never be removed.
+ * Who works for the store, with one of three fixed roles (D14). A member is invited with a one-time code that carries the role to grant; the invitee redeems it while
+ * signed in with their own account. Rules: nobody can change their own access or role, and the last active OWNER can never be removed or demoted.
  */
 public interface StaffService {
 
@@ -17,7 +18,7 @@ public interface StaffService {
 
 	List<StaffInvitation> invitations();
 
-	IssuedInvitation invite(String note, Actor by);
+	IssuedInvitation invite(String note, StaffRole role, Actor by);
 
 	void revokeInvitation(UUID invitationId, Actor by);
 
@@ -25,4 +26,7 @@ public interface StaffService {
 	StaffMember accept(String code, Actor actor);
 
 	StaffMember setActive(UUID userId, boolean active, Actor by);
+
+	/** Changes the role of an existing member (audited). */
+	StaffMember changeRole(UUID userId, StaffRole role, Actor by);
 }

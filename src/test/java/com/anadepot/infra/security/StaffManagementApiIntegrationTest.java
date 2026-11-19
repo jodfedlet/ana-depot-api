@@ -18,8 +18,10 @@ class StaffManagementApiIntegrationTest extends ApiTestSupport {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final String STAFF = "/api/v1/admin/staff";
 
+	private static final String RESERVATIONS = "/api/v1/admin/reservations";
+
 	private JsonNode invite(String staffToken, String note) throws Exception {
-		return JSON.readTree(post(STAFF + "/invitations", Map.of("note", note), staffToken, null).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+		return JSON.readTree(post(STAFF + "/invitations", Map.of("note", note, "role", "STAFF"), staffToken, null).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
 	}
 
 	private int redeem(UUID user, String code) throws Exception {
@@ -31,7 +33,7 @@ class StaffManagementApiIntegrationTest extends ApiTestSupport {
 		get(STAFF, null).andExpect(status().isUnauthorized());
 		var customer = token(UUID.randomUUID());
 		get(STAFF, customer).andExpect(status().isForbidden());
-		post(STAFF + "/invitations", Map.of("note", "x"), customer, null).andExpect(status().isForbidden());
+		post(STAFF + "/invitations", Map.of("note", "x", "role", "STAFF"), customer, null).andExpect(status().isForbidden());
 		put(STAFF + "/" + UUID.randomUUID(), Map.of("active", false), customer).andExpect(status().isForbidden());
 	}
 
@@ -47,10 +49,11 @@ class StaffManagementApiIntegrationTest extends ApiTestSupport {
 		assertThat(list).contains("Marie, cash desk").contains("PENDING").doesNotContain(code).doesNotContain(code.replace("-", ""));
 
 		var colleague = UUID.randomUUID();
-		get(STAFF, token(colleague)).andExpect(status().isForbidden());
+		get(RESERVATIONS, token(colleague)).andExpect(status().isForbidden());
 		assertThat(redeem(colleague, code.toLowerCase())).isEqualTo(200);       // case and dashes do not matter
-		get(STAFF, token(colleague)).andExpect(status().isOk());                 // now staff, on their very next request
-		get("/api/v1/me", token(colleague)).andExpect(jsonPath("$.staff").value(true));
+		get(RESERVATIONS, token(colleague)).andExpect(status().isOk());          // now staff, on their very next request (the invitation said STAFF: counter work only)
+		get("/api/v1/me", token(colleague)).andExpect(jsonPath("$.staff").value(true)).andExpect(jsonPath("$.role").value("STAFF"));
+		get(STAFF, token(colleague)).andExpect(status().isForbidden());          // the team page is the owner's
 
 		// the code is single-use, and a second person cannot reuse it
 		assertThat(redeem(UUID.randomUUID(), code)).isEqualTo(404);
@@ -81,9 +84,9 @@ class StaffManagementApiIntegrationTest extends ApiTestSupport {
 	@Test
 	void anInvitationNeedsANoteOfAtMost80Characters() throws Exception {
 		var owner = newStaffToken();
-		post(STAFF + "/invitations", Map.of("note", "   "), owner, null).andExpect(status().isUnprocessableEntity());
-		post(STAFF + "/invitations", Map.of("note", "x".repeat(81)), owner, null).andExpect(status().isUnprocessableEntity());
-		post(STAFF + "/invitations", Map.of("note", "x".repeat(80)), owner, null).andExpect(status().isCreated());
+		post(STAFF + "/invitations", Map.of("note", "   ", "role", "STAFF"), owner, null).andExpect(status().isUnprocessableEntity());
+		post(STAFF + "/invitations", Map.of("note", "x".repeat(81), "role", "STAFF"), owner, null).andExpect(status().isUnprocessableEntity());
+		post(STAFF + "/invitations", Map.of("note", "x".repeat(80), "role", "STAFF"), owner, null).andExpect(status().isCreated());
 	}
 
 	@Test
@@ -142,7 +145,7 @@ class StaffManagementApiIntegrationTest extends ApiTestSupport {
 		assertThat(statuses.stream().filter(st -> st == 404).count()).isEqualTo(7);
 		int staffNow = 0;
 		for (var user : contenders) {
-			if (mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(STAFF).header("Authorization", "Bearer " + token(user))).andReturn().getResponse().getStatus() == 200) {
+			if (mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(RESERVATIONS).header("Authorization", "Bearer " + token(user))).andReturn().getResponse().getStatus() == 200) {
 				staffNow++;
 			}
 		}
@@ -157,5 +160,56 @@ class StaffManagementApiIntegrationTest extends ApiTestSupport {
 			last = post("/api/v1/me/staff-invitation", Map.of("code", "AAAA-BBBB-CCCC-DDDD-EEEE-FFFF"), user, null).andReturn().getResponse().getStatus();
 		}
 		assertThat(last).isEqualTo(429);
+	}
+
+	@Test
+	void theRoleOfAnInvitationIsTheRoleOfTheNewMember_andOnlyAnOwnerSeesTheTeam() throws Exception {
+		var owner = newStaffToken();
+		var manager = UUID.randomUUID();
+		var code = JSON.readTree(post(STAFF + "/invitations", Map.of("note", "Marie, manager", "role", "MANAGER"), owner, null).andExpect(status().isCreated()).andExpect(jsonPath("$.role").value("MANAGER"))
+				.andReturn().getResponse().getContentAsString()).get("code").asString();
+		assertThat(redeem(manager, code)).isEqualTo(200);
+		get("/api/v1/me", token(manager)).andExpect(jsonPath("$.role").value("MANAGER")).andExpect(jsonPath("$.permissions").isArray())
+				.andExpect(jsonPath("$.permissions[?(@=='CATALOG_MANAGE')]").exists()).andExpect(jsonPath("$.permissions[?(@=='TEAM_MANAGE')]").doesNotExist());
+		get(STAFF, token(manager)).andExpect(status().isForbidden());
+		post(STAFF + "/invitations", Map.of("note", "sneaky", "role", "OWNER"), token(manager), null).andExpect(status().isForbidden());
+		get(STAFF, owner).andExpect(jsonPath("$[?(@.userId=='" + manager + "')].role").value("MANAGER"));
+		post(STAFF + "/invitations", Map.of("note", "no role"), owner, null).andExpect(status().isBadRequest());
+		post(STAFF + "/invitations", Map.of("note", "bad role", "role", "SUPERUSER"), owner, null).andExpect(status().is4xxClientError());
+	}
+
+	@Test
+	void anOwnerChangesARoleAndTheLastOwnerIsProtected_andTheNewRightsApplyOnTheVeryNextRequest() throws Exception {
+		var ownerId = UUID.randomUUID();
+		staffDirectory.grant(ownerId, null, "only owner");
+		var owner = token(ownerId);
+		var counter = UUID.randomUUID();
+		staffDirectory.grant(counter, ownerId, "counter", com.anadepot.core.staff.model.StaffRole.STAFF);
+		get("/api/v1/admin/reports/overview", token(counter)).andExpect(status().isForbidden());
+		put(STAFF + "/" + counter + "/role", Map.of("role", "MANAGER"), owner).andExpect(status().isOk()).andExpect(jsonPath("$.role").value("MANAGER"));
+		get("/api/v1/admin/reports/overview", token(counter)).andExpect(status().isOk());       // promoted: allowed now, no new sign-in needed
+		put(STAFF + "/" + counter + "/role", Map.of("role", "STAFF"), owner).andExpect(status().isOk());
+		get("/api/v1/admin/reports/overview", token(counter)).andExpect(status().isForbidden()); // demoted: refused on the next request
+		put(STAFF + "/" + ownerId + "/role", Map.of("role", "MANAGER"), owner).andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("cannot_change_own_access"));
+		// a second owner exists: the first may now be demoted by the second
+		put(STAFF + "/" + counter + "/role", Map.of("role", "OWNER"), owner).andExpect(status().isOk());
+		put(STAFF + "/" + ownerId + "/role", Map.of("role", "STAFF"), token(counter)).andExpect(status().isOk());
+		put(STAFF + "/" + ownerId + "/role", Map.of("role", "OWNER"), owner).andExpect(status().isForbidden());   // a STAFF member cannot manage the team
+		put(STAFF + "/" + counter + "/role", Map.of("role", "BANANA"), token(counter)).andExpect(status().is4xxClientError());
+		put(STAFF + "/" + UUID.randomUUID() + "/role", Map.of("role", "STAFF"), token(counter)).andExpect(status().isNotFound());
+	}
+
+	@Test
+	void theLastActiveOwnerCannotBeRemovedEvenByAnotherOwnerWhoIsAboutToBeRemoved() throws Exception {
+		var a = UUID.randomUUID();
+		var b = UUID.randomUUID();
+		staffDirectory.grant(a, null, "owner a");
+		staffDirectory.grant(b, null, "owner b");
+		put(STAFF + "/" + b, Map.of("active", false), token(a)).andExpect(status().isOk());                   // two owners -> one
+		put(STAFF + "/" + a, Map.of("active", false), token(b)).andExpect(status().isForbidden());            // b is no longer staff at all
+		var m = UUID.randomUUID();
+		staffDirectory.grant(m, a, "manager", com.anadepot.core.staff.model.StaffRole.MANAGER);
+		put(STAFF + "/" + a, Map.of("active", false), token(m)).andExpect(status().isForbidden());            // managers cannot touch the team
+		assertThat(staffDirectory.activeRole(a)).contains(com.anadepot.core.staff.model.StaffRole.OWNER);
 	}
 }

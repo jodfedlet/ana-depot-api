@@ -24,7 +24,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 /**
  * Stateless API security. DENY BY DEFAULT: anything not listed is refused. Authorization is decided here, on the server;
  * the frontend's hidden links mean nothing. Public: the health probe and the read-only catalog. Authenticated: /me.
- * Staff: /api/v1/admin/**. Reservation endpoints for guests (no account required) will be added with their use cases.
+ * Staff: /api/v1/admin/** (each endpoint needs the permission {@link AdminAccessRules} lists; the role comes from our staff table). Reservation endpoints for guests (no account required) will be added with their use cases.
  */
 @Configuration
 class SecurityConfig {
@@ -37,7 +37,8 @@ class SecurityConfig {
 				.headers(h -> responseHeaders(h, headerProperties))
 				.csrf(csrf -> csrf.disable()) // stateless bearer-token API: no cookies, nothing for CSRF to ride on
 				.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-				.authorizeHttpRequests(a -> a
+				.authorizeHttpRequests(a -> {
+					a
 						.requestMatchers("/actuator/health/**").permitAll()
 						.requestMatchers("/actuator/metrics/**").hasAuthority(StaffAuthoritiesConverter.STAFF)
 						.requestMatchers(HttpMethod.GET, "/api/v1/products/**", "/api/v1/categories/**", "/api/v1/store/**").permitAll()
@@ -46,9 +47,10 @@ class SecurityConfig {
 						// online payment: same ownership proof as lookup (reference + phone, or the owning customer's token); the webhook authenticates by Stripe's signature
 						.requestMatchers(HttpMethod.POST, "/api/v1/reservations/*/payments/checkout-session", "/api/v1/reservations/*/payments/status").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/webhooks/stripe").permitAll()
-						.requestMatchers("/api/v1/me/**").hasAuthority(StaffAuthoritiesConverter.AUTHENTICATED)
-						.requestMatchers("/api/v1/admin/**").hasAuthority(StaffAuthoritiesConverter.STAFF)
-						.anyRequest().denyAll())
+						.requestMatchers("/api/v1/me/**").hasAuthority(StaffAuthoritiesConverter.AUTHENTICATED);
+					AdminAccessRules.apply(a);   // /api/v1/admin/**: one permission per endpoint (D14), unlisted = owner only
+					a.anyRequest().denyAll();
+				})
 				.oauth2ResourceServer(o -> o
 						.jwt(j -> j.jwtAuthenticationConverter(authorities))
 						.authenticationEntryPoint(handlers)

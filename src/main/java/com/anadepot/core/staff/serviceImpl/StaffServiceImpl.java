@@ -10,6 +10,7 @@ import com.anadepot.core.shared.TransactionBoundary;
 import com.anadepot.core.staff.model.IssuedInvitation;
 import com.anadepot.core.staff.model.StaffInvitation;
 import com.anadepot.core.staff.model.StaffMember;
+import com.anadepot.core.staff.model.StaffRole;
 import com.anadepot.core.staff.repository.StaffRepository;
 import com.anadepot.core.staff.service.StaffService;
 import java.nio.charset.StandardCharsets;
@@ -56,17 +57,20 @@ public class StaffServiceImpl implements StaffService {
 	}
 
 	@Override
-	public IssuedInvitation invite(String note, Actor by) {
+	public IssuedInvitation invite(String note, StaffRole role, Actor by) {
+		if (role == null) {
+			throw new FieldValidationException(List.of(new FieldValidationException.FieldIssue("role", "required")));
+		}
 		var clean = note == null ? "" : note.strip();
 		if (clean.isEmpty() || clean.length() > NOTE_MAX) {
 			throw new FieldValidationException(List.of(new FieldValidationException.FieldIssue("note", clean.isEmpty() ? "required" : "too_long")));
 		}
 		var code = newCode();
 		var now = clock.instant();
-		var invitation = new StaffInvitation(UUID.randomUUID(), hash(code), clean, by.userId(), now, now.plus(invitationLifetime), null, null, null, null);
+		var invitation = new StaffInvitation(UUID.randomUUID(), hash(code), clean, role, by.userId(), now, now.plus(invitationLifetime), null, null, null, null);
 		return tx.inTransaction(() -> {
 			var saved = staff.saveInvitation(invitation);
-			audit.record(AuditEvent.of("STAFF_INVITED", "staff_invitation", saved.id(), by, Map.of(), Map.of("expiresAt", saved.expiresAt().toString(), "noteLength", clean.length()), null));
+			audit.record(AuditEvent.of("STAFF_INVITED", "staff_invitation", saved.id(), by, Map.of(), Map.of("expiresAt", saved.expiresAt().toString(), "noteLength", clean.length(), "role", role.name()), null));
 			return new IssuedInvitation(saved, display(code));
 		});
 	}
@@ -103,10 +107,10 @@ public class StaffServiceImpl implements StaffService {
 				throw new DomainRuleViolation("already_staff", "This account already belongs to the team.");
 			}
 			staff.saveInvitation(invitation.accepted(actor.userId(), now));
-			var member = existing.map(m -> m.withActive(true, actor.userId(), now))
-					.orElseGet(() -> new StaffMember(actor.userId(), true, invitation.createdBy(), now, invitation.note(), null, null));
+			var member = existing.map(m -> m.rejoined(invitation.role(), actor.userId(), now))
+					.orElseGet(() -> new StaffMember(actor.userId(), true, invitation.role(), invitation.createdBy(), now, invitation.note(), null, null));
 			var saved = staff.saveMember(member);
-			audit.record(AuditEvent.of("STAFF_JOINED", "staff_member", actor.userId(), actor, Map.of("active", existing.map(StaffMember::active).orElse(false)), Map.of("active", true),
+			audit.record(AuditEvent.of("STAFF_JOINED", "staff_member", actor.userId(), actor, Map.of("active", existing.map(StaffMember::active).orElse(false)), Map.of("active", true, "role", invitation.role().name()),
 					"invitation " + invitation.id()));
 			return saved;
 		});
@@ -123,11 +127,34 @@ public class StaffServiceImpl implements StaffService {
 			if (member.active() == active) {
 				return member;
 			}
-			if (!active && activeNow.stream().noneMatch(m -> !m.userId().equals(userId))) {
-				throw new DomainRuleViolation("last_active_staff", "The last active team member cannot be removed.");
+			if (!active && member.role() == StaffRole.OWNER && activeNow.stream().noneMatch(m -> m.role() == StaffRole.OWNER && !m.userId().equals(userId))) {
+				throw new DomainRuleViolation("last_active_owner", "The last active owner cannot be removed.");
 			}
 			var saved = staff.saveMember(member.withActive(active, by.userId(), clock.instant()));
 			audit.record(AuditEvent.of(active ? "STAFF_REACTIVATED" : "STAFF_DEACTIVATED", "staff_member", userId, by, Map.of("active", !active), Map.of("active", active), null));
+			return saved;
+		});
+	}
+
+	@Override
+	public StaffMember changeRole(UUID userId, StaffRole role, Actor by) {
+		if (role == null) {
+			throw new FieldValidationException(List.of(new FieldValidationException.FieldIssue("role", "required")));
+		}
+		if (userId.equals(by.userId())) {
+			throw new DomainRuleViolation("cannot_change_own_access", "You cannot change your own access. Ask a colleague.");
+		}
+		return tx.inTransaction(() -> {
+			var activeNow = staff.lockActiveMembers();
+			var member = staff.findMember(userId).orElseThrow(() -> new NotFoundException("Staff member", userId));
+			if (member.role() == role) {
+				return member;
+			}
+			if (member.active() && member.role() == StaffRole.OWNER && activeNow.stream().noneMatch(m -> m.role() == StaffRole.OWNER && !m.userId().equals(userId))) {
+				throw new DomainRuleViolation("last_active_owner", "The last active owner cannot be demoted.");
+			}
+			var saved = staff.saveMember(member.withRole(role, by.userId(), clock.instant()));
+			audit.record(AuditEvent.of("STAFF_ROLE_CHANGED", "staff_member", userId, by, Map.of("role", member.role().name()), Map.of("role", role.name()), null));
 			return saved;
 		});
 	}

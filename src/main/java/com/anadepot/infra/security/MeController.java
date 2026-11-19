@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/me")
 class MeController {
 
-	record MeResponse(UUID userId, String email, boolean emailVerified, boolean staff, boolean mfaRequired, List<String> permissions, UUID customerProfileId) {
+	record MeResponse(UUID userId, String email, boolean emailVerified, boolean staff, boolean mfaRequired, String role, List<String> permissions, UUID customerProfileId) {
 	}
 
 	private final CustomerJpaRepository customers;
@@ -35,8 +35,14 @@ class MeController {
 		// an active member whose session lacks the second factor: not staff yet, and the web sends them to enroll/verify
 		boolean mfaRequired = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(StaffAuthoritiesConverter.MFA_REQUIRED));
 		var profile = customers.findByAuthUserId(userId).map(c -> c.id()).orElse(null);
-		// permissions: the role model is an open business decision, so the list is empty by design
-		return new MeResponse(userId, jwt.getClaimAsString("email"), emailVerified(jwt), staff, mfaRequired, List.of(), profile);
+		// role and permissions come from OUR staff table (via the authorities the converter derived); the web only uses them to decide what to SHOW, every endpoint re-checks
+		var role = authorities(authentication).stream().filter(a -> a.startsWith(StaffAuthoritiesConverter.ROLE_PREFIX)).map(a -> a.substring(StaffAuthoritiesConverter.ROLE_PREFIX.length())).findFirst().orElse(null);
+		var permissions = authorities(authentication).stream().filter(a -> a.startsWith("PERM_")).map(a -> a.substring(5)).sorted().toList();
+		return new MeResponse(userId, jwt.getClaimAsString("email"), emailVerified(jwt), staff, mfaRequired, role, permissions, profile);
+	}
+
+	private static List<String> authorities(Authentication authentication) {
+		return authentication.getAuthorities().stream().map(a -> a.getAuthority()).toList();
 	}
 
 	/** Informational only (never used for authorization): Supabase issues sessions to verified addresses when confirmation is enabled. */

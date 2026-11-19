@@ -12,6 +12,7 @@ import com.anadepot.core.shared.NotFoundException;
 import com.anadepot.core.shared.TransactionBoundary;
 import com.anadepot.core.staff.model.StaffInvitation;
 import com.anadepot.core.staff.model.StaffMember;
+import com.anadepot.core.staff.model.StaffRole;
 import com.anadepot.core.staff.repository.StaffRepository;
 import com.anadepot.core.staff.serviceImpl.StaffServiceImpl;
 import java.time.Clock;
@@ -68,12 +69,12 @@ class StaffServiceImplTest {
 			@Override public <T> T inTransaction(Supplier<T> work) { return work.get(); }
 		};
 		service = new StaffServiceImpl(repo, recorder, tx, clock, Duration.ofDays(7));
-		repo.members.put(owner.userId(), new StaffMember(owner.userId(), true, null, clock.now, "owner", null, null));
+		repo.members.put(owner.userId(), new StaffMember(owner.userId(), true, StaffRole.OWNER, null, clock.now, "owner", null, null));
 	}
 
 	@Test
 	void theCodeIsNeverStoredOnlyItsHashAndTheAuditNeverHoldsItOrTheNote() {
-		var issued = service.invite("Marie, cash desk", owner);
+		var issued = service.invite("Marie, cash desk", StaffRole.STAFF, owner);
 		var stored = repo.invitations.values().iterator().next();
 		assertThat(stored.codeHash()).hasSize(64).doesNotContain(issued.code().replace("-", ""));
 		assertThat(issued.toString()).doesNotContain(issued.code());
@@ -83,7 +84,7 @@ class StaffServiceImplTest {
 
 	@Test
 	void anInvitationExpiresAndThenLooksLikeAnyOtherInvalidCode() {
-		var issued = service.invite("late", owner);
+		var issued = service.invite("late", StaffRole.STAFF, owner);
 		clock.now = clock.now.plus(Duration.ofDays(7)).plusSeconds(1);
 		assertThatThrownBy(() -> service.accept(issued.code(), Actor.staff(UUID.randomUUID()))).isInstanceOf(NotFoundException.class).extracting(e -> ((NotFoundException) e).code()).isEqualTo("invitation_invalid");
 		assertThat(repo.members).hasSize(1);
@@ -91,7 +92,7 @@ class StaffServiceImplTest {
 
 	@Test
 	void aCodeWorksOnceAndTheNewMemberIsActiveWithTheInviterRecorded() {
-		var issued = service.invite("Jean", owner);
+		var issued = service.invite("Jean", StaffRole.STAFF, owner);
 		var newcomer = Actor.staff(UUID.randomUUID());
 		var member = service.accept(issued.code(), newcomer);
 		assertThat(member.active()).isTrue();
@@ -103,7 +104,7 @@ class StaffServiceImplTest {
 
 	@Test
 	void aGuestOrAnAnonymousActorCannotRedeem() {
-		var issued = service.invite("x", owner);
+		var issued = service.invite("x", StaffRole.STAFF, owner);
 		assertThatThrownBy(() -> service.accept(issued.code(), Actor.guest())).isInstanceOf(NotFoundException.class);
 		assertThatThrownBy(() -> service.accept(issued.code(), null)).isInstanceOf(NotFoundException.class);
 	}
@@ -111,9 +112,9 @@ class StaffServiceImplTest {
 	@Test
 	void aDeactivatedMemberCanComeBackWithANewInvitation() {
 		var person = UUID.randomUUID();
-		var first = service.accept(service.invite("first", owner).code(), Actor.staff(person));
+		var first = service.accept(service.invite("first", StaffRole.STAFF, owner).code(), Actor.staff(person));
 		service.setActive(person, false, owner);
-		var again = service.accept(service.invite("again", owner).code(), Actor.staff(person));
+		var again = service.accept(service.invite("again", StaffRole.STAFF, owner).code(), Actor.staff(person));
 		assertThat(again.active()).isTrue();
 		assertThat(first.userId()).isEqualTo(again.userId());
 	}
@@ -123,10 +124,10 @@ class StaffServiceImplTest {
 		assertThatThrownBy(() -> service.setActive(owner.userId(), false, owner)).isInstanceOf(DomainRuleViolation.class).extracting(e -> ((DomainRuleViolation) e).code()).isEqualTo("cannot_change_own_access");
 
 		var second = Actor.staff(UUID.randomUUID());
-		repo.members.put(second.userId(), new StaffMember(second.userId(), true, null, clock.now, "second", null, null));
+		repo.members.put(second.userId(), new StaffMember(second.userId(), true, StaffRole.OWNER, null, clock.now, "second", null, null));
 		service.setActive(second.userId(), false, owner);                                   // two active -> one: fine
 		// only the owner is active now: a colleague (inactive, but acting through an old token) cannot remove the last active member either
-		assertThatThrownBy(() -> service.setActive(owner.userId(), false, second)).isInstanceOf(DomainRuleViolation.class).extracting(e -> ((DomainRuleViolation) e).code()).isEqualTo("last_active_staff");
+		assertThatThrownBy(() -> service.setActive(owner.userId(), false, second)).isInstanceOf(DomainRuleViolation.class).extracting(e -> ((DomainRuleViolation) e).code()).isEqualTo("last_active_owner");
 		assertThat(repo.members.get(owner.userId()).active()).isTrue();
 		assertThat(audit).extracting(AuditEvent::action).contains("STAFF_DEACTIVATED");
 	}
@@ -134,7 +135,59 @@ class StaffServiceImplTest {
 	@Test
 	void anUnknownMemberIsNotFoundAndANoteIsRequired() {
 		assertThatThrownBy(() -> service.setActive(UUID.randomUUID(), false, owner)).isInstanceOf(NotFoundException.class);
-		assertThatThrownBy(() -> service.invite("  ", owner)).isInstanceOf(FieldValidationException.class);
-		assertThatThrownBy(() -> service.invite("x".repeat(81), owner)).isInstanceOf(FieldValidationException.class);
+		assertThatThrownBy(() -> service.invite("  ", StaffRole.STAFF, owner)).isInstanceOf(FieldValidationException.class);
+		assertThatThrownBy(() -> service.invite("x".repeat(81), StaffRole.STAFF, owner)).isInstanceOf(FieldValidationException.class);
+	}
+
+	@Test
+	void theInvitationCarriesTheRoleThatTheNewMemberReceives_andARoleIsRequired() {
+		var manager = service.accept(service.invite("Marie", StaffRole.MANAGER, owner).code(), Actor.staff(UUID.randomUUID()));
+		var counter = service.accept(service.invite("Jean", StaffRole.STAFF, owner).code(), Actor.staff(UUID.randomUUID()));
+		assertThat(manager.role()).isEqualTo(StaffRole.MANAGER);
+		assertThat(counter.role()).isEqualTo(StaffRole.STAFF);
+		assertThat(audit.toString()).contains("MANAGER");
+		assertThatThrownBy(() -> service.invite("nobody", null, owner)).isInstanceOf(FieldValidationException.class);
+	}
+
+	@Test
+	void aMemberWhoComesBackGetsTheRoleOfTheNewInvitation() {
+		var person = UUID.randomUUID();
+		service.accept(service.invite("first", StaffRole.MANAGER, owner).code(), Actor.staff(person));
+		service.setActive(person, false, owner);
+		var again = service.accept(service.invite("again", StaffRole.STAFF, owner).code(), Actor.staff(person));
+		assertThat(again.role()).isEqualTo(StaffRole.STAFF);
+	}
+
+	@Test
+	void theLastActiveOwnerCanNeitherBeRemovedNorDemoted_butOtherRolesCanBe() {
+		var manager = Actor.staff(UUID.randomUUID());
+		repo.members.put(manager.userId(), new StaffMember(manager.userId(), true, StaffRole.MANAGER, null, clock.now, "manager", null, null));
+		// the manager acts (old token) against the only owner
+		assertThatThrownBy(() -> service.setActive(owner.userId(), false, manager)).isInstanceOf(DomainRuleViolation.class).extracting(e -> ((DomainRuleViolation) e).code()).isEqualTo("last_active_owner");
+		assertThatThrownBy(() -> service.changeRole(owner.userId(), StaffRole.MANAGER, manager)).isInstanceOf(DomainRuleViolation.class).extracting(e -> ((DomainRuleViolation) e).code()).isEqualTo("last_active_owner");
+		assertThat(repo.members.get(owner.userId()).role()).isEqualTo(StaffRole.OWNER);
+		// a second owner makes both allowed
+		service.changeRole(manager.userId(), StaffRole.OWNER, owner);
+		var demoted = service.changeRole(owner.userId(), StaffRole.STAFF, manager);
+		assertThat(demoted.role()).isEqualTo(StaffRole.STAFF);
+		// removing a non-owner never needs an owner check
+		service.setActive(owner.userId(), false, manager);
+		assertThat(repo.members.get(owner.userId()).active()).isFalse();
+	}
+
+	@Test
+	void changingARoleIsAuditedNobodyChangesTheirOwnAndAnUnknownMemberIsNotFound() {
+		var person = UUID.randomUUID();
+		service.accept(service.invite("p", StaffRole.STAFF, owner).code(), Actor.staff(person));
+		var changed = service.changeRole(person, StaffRole.MANAGER, owner);
+		assertThat(changed.role()).isEqualTo(StaffRole.MANAGER);
+		assertThat(changed.updatedBy()).isEqualTo(owner.userId());
+		var event = audit.stream().filter(e -> e.action().equals("STAFF_ROLE_CHANGED")).findFirst().orElseThrow();
+		assertThat(event.toString()).contains("STAFF").contains("MANAGER");
+		assertThatThrownBy(() -> service.changeRole(owner.userId(), StaffRole.STAFF, owner)).isInstanceOf(DomainRuleViolation.class).extracting(e -> ((DomainRuleViolation) e).code()).isEqualTo("cannot_change_own_access");
+		assertThatThrownBy(() -> service.changeRole(UUID.randomUUID(), StaffRole.STAFF, owner)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.changeRole(person, null, owner)).isInstanceOf(FieldValidationException.class);
+		assertThat(service.changeRole(person, StaffRole.MANAGER, owner)).isEqualTo(changed);   // same role: nothing changes, nothing audited twice
+		assertThat(audit.stream().filter(e -> e.action().equals("STAFF_ROLE_CHANGED"))).hasSize(1);
 	}
 }

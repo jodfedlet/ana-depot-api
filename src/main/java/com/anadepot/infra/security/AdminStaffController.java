@@ -2,6 +2,8 @@ package com.anadepot.infra.security;
 
 import com.anadepot.core.staff.model.StaffInvitation;
 import com.anadepot.core.staff.model.StaffMember;
+import com.anadepot.core.staff.model.StaffRole;
+import com.anadepot.infra.web.QueryParams;
 import com.anadepot.core.staff.service.StaffService;
 import com.anadepot.infra.customer.CustomerJpaRepository;
 import jakarta.validation.Valid;
@@ -33,7 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 class AdminStaffController {
 
 	/** {@code initial}: the first administrator, provisioned from configuration rather than invited (no inviter). */
-	record MemberView(UUID userId, boolean active, boolean you, boolean initial, String displayName, String email, String note, Instant joinedAt, Instant updatedAt) {
+	record MemberView(UUID userId, boolean active, String role, boolean you, boolean initial, String displayName, String email, String note, Instant joinedAt, Instant updatedAt) {
 
 		/** Personal data: never printed. */
 		@Override
@@ -42,10 +44,10 @@ class AdminStaffController {
 		}
 	}
 
-	record InvitationView(UUID id, String note, String status, Instant createdAt, Instant expiresAt) {
+	record InvitationView(UUID id, String note, String role, String status, Instant createdAt, Instant expiresAt) {
 	}
 
-	record IssuedView(UUID id, String note, Instant expiresAt, String code) {
+	record IssuedView(UUID id, String note, String role, Instant expiresAt, String code) {
 
 		@Override
 		public String toString() {
@@ -53,7 +55,10 @@ class AdminStaffController {
 		}
 	}
 
-	record InviteRequest(@NotNull String note) {
+	record InviteRequest(@NotNull String note, @NotNull String role) {
+	}
+
+	record RoleRequest(@NotNull String role) {
 	}
 
 	record ActiveRequest(@NotNull Boolean active) {
@@ -84,18 +89,25 @@ class AdminStaffController {
 		return view(saved, name, authentication.getName());
 	}
 
+	@PutMapping("/{userId}/role")
+	MemberView setRole(@PathVariable UUID userId, @Valid @RequestBody RoleRequest body, Authentication authentication) {
+		var saved = staff.changeRole(userId, QueryParams.enumOf(StaffRole.class, body.role(), "role"), Actors.staff(authentication));
+		var name = customers.findNamesByAuthUserIds(List.of(userId)).stream().findFirst().orElse(null);
+		return view(saved, name, authentication.getName());
+	}
+
 	@GetMapping("/invitations")
 	List<InvitationView> invitations() {
 		var now = clock.instant();
-		return staff.invitations().stream().map(i -> new InvitationView(i.id(), i.note(), i.status(now).name(), i.createdAt(), i.expiresAt())).toList();
+		return staff.invitations().stream().map(i -> new InvitationView(i.id(), i.note(), i.role().name(), i.status(now).name(), i.createdAt(), i.expiresAt())).toList();
 	}
 
 	@PostMapping("/invitations")
 	@ResponseStatus(HttpStatus.CREATED)
 	IssuedView invite(@Valid @RequestBody InviteRequest body, Authentication authentication) {
-		var issued = staff.invite(body.note(), Actors.staff(authentication));
+		var issued = staff.invite(body.note(), QueryParams.enumOf(StaffRole.class, body.role(), "role"), Actors.staff(authentication));
 		var i = issued.invitation();
-		return new IssuedView(i.id(), i.note(), i.expiresAt(), issued.code());
+		return new IssuedView(i.id(), i.note(), i.role().name(), i.expiresAt(), issued.code());
 	}
 
 	@DeleteMapping("/invitations/{id}")
@@ -106,7 +118,7 @@ class AdminStaffController {
 
 	private static MemberView view(StaffMember m, CustomerJpaRepository.AccountName name, String callerId) {
 		var display = name == null ? null : ((name.firstName() == null ? "" : name.firstName()) + " " + (name.lastName() == null ? "" : name.lastName())).strip();
-		return new MemberView(m.userId(), m.active(), m.userId().toString().equals(callerId), m.grantedBy() == null, display == null || display.isEmpty() ? null : display, name == null ? null : name.email(), m.note(),
+		return new MemberView(m.userId(), m.active(), m.role().name(), m.userId().toString().equals(callerId), m.grantedBy() == null, display == null || display.isEmpty() ? null : display, name == null ? null : name.email(), m.note(),
 				m.grantedAt(), m.updatedAt());
 	}
 }

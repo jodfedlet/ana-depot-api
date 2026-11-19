@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /** A pending, accepted, revoked or expired invitation. The code itself is never stored, only its hash. */
-public record StaffInvitation(UUID id, String codeHash, String note, UUID createdBy, Instant createdAt, Instant expiresAt,
+public record StaffInvitation(UUID id, String codeHash, String note, StaffRole role, UUID createdBy, Instant createdAt, Instant expiresAt,
 		UUID acceptedBy, Instant acceptedAt, Instant revokedAt, UUID revokedBy) {
 
 	public enum Status { PENDING, ACCEPTED, REVOKED, EXPIRED }
@@ -20,10 +20,10 @@ public record StaffInvitation(UUID id, String codeHash, String note, UUID create
 	}
 
 	public StaffInvitation accepted(UUID by, Instant at) {
-		return new StaffInvitation(id, codeHash, note, createdBy, createdAt, expiresAt, by, at, revokedAt, revokedBy);
+		return new StaffInvitation(id, codeHash, note, role, createdBy, createdAt, expiresAt, by, at, revokedAt, revokedBy);
 	}
 
 	public StaffInvitation revoked(UUID by, Instant at) {
-		return new StaffInvitation(id, codeHash, note, createdBy, createdAt, expiresAt, acceptedBy, acceptedAt, at, by);
+		return new StaffInvitation(id, codeHash, note, role, createdBy, createdAt, expiresAt, acceptedBy, acceptedAt, at, by);
 	}
 }

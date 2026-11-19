@@ -21,7 +21,7 @@ import org.springframework.test.context.TestPropertySource;
  * An upload that was started, whose file reached the bucket, but that nobody completed: the scheduled cleanup deletes the object and expires the intent.
  * Real R2ObjectStorage against MinIO (S3-COMPATIBLE, NOT REAL CLOUDFLARE R2), real PostgreSQL.
  */
-@TestPropertySource(properties = {"ana.upload.url-ttl=PT1S", "ana.upload.abandoned-after=PT1S"})
+@TestPropertySource(properties = {"ana.upload.url-ttl=PT4S", "ana.upload.abandoned-after=PT1S"})
 class R2AbandonedUploadCleanupIntegrationTest extends AbstractIntegrationTest {
 
 	static final String BUCKET = MinioSupport.newBucket("cleanup");
@@ -48,7 +48,7 @@ class R2AbandonedUploadCleanupIntegrationTest extends AbstractIntegrationTest {
 		assertThat(HttpClient.newHttpClient().send(put.build(), HttpResponse.BodyHandlers.discarding()).statusCode()).isEqualTo(200);
 		assertThat(storage.inspect(ticket.intent().objectKey(), 4)).isPresent();
 
-		Thread.sleep(3200);                       // url-ttl 1 s + abandoned-after 1 s
+		Thread.sleep(5500);                       // url-ttl 4 s + abandoned-after 1 s (a 1 s URL validity raced the PUT: MinIO answered "Request has expired")
 		scheduler.run();                          // exactly what the scheduled job does
 
 		assertThat(storage.inspect(ticket.intent().objectKey(), 4)).as("the abandoned object was deleted from the bucket").isEmpty();

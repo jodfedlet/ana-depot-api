@@ -215,15 +215,21 @@ class ReservationFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
-	void overpaymentIsCurrentlyAcceptedAndTheDueAmountFloorsAtZero_anUnresolvedBusinessDecision() {
+	void aPaymentAboveTheRemainingBalanceIsRefusedAndNothingIsRecorded_D3() {   // D3, approved by the owner: replaces "overpayment is accepted"
 		var product = stockedMattress(10);
 		var r = submit(key(), line(product, 1, SupportedCurrency.USD)); // 180 USD
 		ready(r);
-		pay(r.id(), usd("200.00"));
+		assertThatThrownBy(() -> pay(r.id(), usd("200.00"))).extracting("code").isEqualTo("overpayment_not_allowed");
+		var untouched = reservations.get(r.id());
+		assertThat(untouched.paymentStatus()).isEqualTo(PaymentStatus.UNPAID);
+		assertThat(untouched.paid().get(SupportedCurrency.USD)).isEqualTo(usd("0.00"));
+		pay(r.id(), usd("100.00"));
+		assertThatThrownBy(() -> pay(r.id(), usd("80.01"))).extracting("code").isEqualTo("overpayment_not_allowed");   // 80.00 is still due
+		pay(r.id(), usd("80.00"));                                                                                    // exactly the balance is fine
 		var after = reservations.get(r.id());
 		assertThat(after.paymentStatus()).isEqualTo(PaymentStatus.PAID);
 		assertThat(after.balances().get(SupportedCurrency.USD).due()).isEqualTo(usd("0.00"));
-		assertThat(after.paid().get(SupportedCurrency.USD)).isEqualTo(usd("200.00")); // the original amount is preserved
+		assertThat(after.paid().get(SupportedCurrency.USD)).isEqualTo(usd("180.00"));
 	}
 
 	// ---------------------------------------------------------------- stock release & lifecycle

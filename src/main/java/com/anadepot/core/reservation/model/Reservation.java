@@ -175,8 +175,8 @@ public final class Reservation {
 
 	/**
 	 * Applies a signed ledger movement (+payment, -reversal, +/-adjustment) to the cached paid amount of ITS currency.
-	 * The currency must be one of the reservation's; the result may not be negative. Overpayment is currently allowed
-	 * (the due amount floors at zero): an unresolved business decision, kept as in the storefront.
+	 * The currency must be one of the reservation's; the result may not be negative. A new CASH payment above the
+	 * remaining balance is refused by {@code PaymentServiceImpl} (D3); adjustments keep the arithmetic here and the due amount floors at zero.
 	 */
 	public void applyLedger(Money signed) {
 		if (!totals.has(signed.currency())) {

@@ -80,6 +80,11 @@ public class PaymentServiceImpl implements PaymentService {
 			if (balance.settled()) {
 				throw new DomainRuleViolation("already_paid", "The " + cmd.amount().currency() + " balance is already settled");
 			}
+			// D3 (owner-approved): a payment never exceeds what is still due in its currency; the counter gives change.
+			if (cmd.amount().isGreaterThan(balance.due())) {
+				throw new DomainRuleViolation("overpayment_not_allowed",
+						"The amount is more than the " + cmd.amount().currency() + " balance still due (" + balance.due().amount().toPlainString() + "): record at most that amount and give change");
+			}
 			var now = clock.instant();
 			var payment = new Payment(UUID.randomUUID(), reservation.id(), cmd.amount(), cmd.method(), cmd.receivedAt() == null ? now : cmd.receivedAt(), now,
 					cmd.actor() == null ? null : cmd.actor().userId(), blankToNull(cmd.reference()), blankToNull(cmd.note()));

@@ -115,6 +115,8 @@ class AdminPaymentApiIntegrationTest extends ApiTestSupport {
 		post(ADMIN + "/reservations/" + r.id() + "/payments", Map.of("amount", "10.00", "currency", "USD"), staffToken, key()).andExpect(status().isUnprocessableContent())
 				.andExpect(jsonPath("$.code").value("currency_invalid"));                                         // this reservation has no USD balance
 		assertThat(payStatus(r, Map.of("amount", "10.00", "currency", "HTG", "method", "BITCOIN"), key())).isEqualTo(422);
+		post(ADMIN + "/reservations/" + r.id() + "/payments", Map.of("amount", "25000.01", "currency", "HTG"), staffToken, key()).andExpect(status().isUnprocessableContent())
+				.andExpect(jsonPath("$.code").value("overpayment_not_allowed"));                                  // D3: one cent above the balance (25000.00)
 		post(ADMIN + "/reservations/" + UUID.randomUUID() + "/payments", Map.of("amount", "10.00", "currency", "HTG"), staffToken, key()).andExpect(status().isNotFound());
 		assertThat(JSON.readTree(get(ADMIN + "/reservations/" + r.id() + "/payments", staffToken).andReturn().getResponse().getContentAsString()).get("payments")).isEmpty();
 	}
@@ -200,7 +202,7 @@ class AdminPaymentApiIntegrationTest extends ApiTestSupport {
 		for (int i = 0; i < threads; i++) {
 			results.add(pool.submit(() -> {
 				start.await();
-				return payStatus(r, Map.of("amount", "10000.00", "currency", "HTG"), key());
+				return payStatus(r, Map.of("amount", "5000.00", "currency", "HTG"), key());
 			}));
 		}
 		start.countDown();
@@ -217,11 +219,11 @@ class AdminPaymentApiIntegrationTest extends ApiTestSupport {
 			}
 		}
 		pool.shutdown();
-		assertThat(ok).as("status codes " + codes).isEqualTo(3);                      // 10000 + 10000 + 10000 settles 25000; the others see it settled
-		assertThat(conflict).as("status codes " + codes).isEqualTo(threads - 3);
+		assertThat(ok).as("status codes " + codes).isEqualTo(5);                      // 5 x 5000 settles 25000 exactly; the sixth sees it settled (D3: nothing above the balance is ever recorded)
+		assertThat(conflict).as("status codes " + codes).isEqualTo(threads - 5);
 		var summary = JSON.readTree(get(ADMIN + "/reservations/" + r.id() + "/payments", staffToken).andReturn().getResponse().getContentAsString());
 		assertThat(summary.get("paymentStatus").asString()).isEqualTo("PAID");
-		assertThat(summary.get("payments")).hasSize(3);
+		assertThat(summary.get("payments")).hasSize(5);
 		var report = JSON.readTree(get(ADMIN + "/reservations/" + r.id() + "/reconciliation", staffToken).andReturn().getResponse().getContentAsString());
 		assertThat(report.get("consistent").asBoolean()).isTrue();
 	}

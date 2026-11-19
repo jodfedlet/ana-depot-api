@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/me")
 class MeController {
 
-	record MeResponse(UUID userId, String email, boolean emailVerified, boolean staff, boolean mfaRequired, String role, List<String> permissions, UUID customerProfileId) {
+	record MeResponse(UUID userId, String email, boolean emailVerified, boolean staff, boolean mfaRequired, boolean mfaRecovered, String role, List<String> permissions, UUID customerProfileId) {
 	}
 
 	private final CustomerJpaRepository customers;
@@ -38,7 +38,7 @@ class MeController {
 		// role and permissions come from OUR staff table (via the authorities the converter derived); the web only uses them to decide what to SHOW, every endpoint re-checks
 		var role = authorities(authentication).stream().filter(a -> a.startsWith(StaffAuthoritiesConverter.ROLE_PREFIX)).map(a -> a.substring(StaffAuthoritiesConverter.ROLE_PREFIX.length())).findFirst().orElse(null);
 		var permissions = authorities(authentication).stream().filter(a -> a.startsWith("PERM_")).map(a -> a.substring(5)).sorted().toList();
-		return new MeResponse(userId, jwt.getClaimAsString("email"), emailVerified(jwt), staff, mfaRequired, role, permissions, profile);
+		return new MeResponse(userId, jwt.getClaimAsString("email"), emailVerified(jwt), staff, mfaRequired, authorities(authentication).contains(StaffAuthoritiesConverter.MFA_RECOVERED), role, permissions, profile);
 	}
 
 	private static List<String> authorities(Authentication authentication) {

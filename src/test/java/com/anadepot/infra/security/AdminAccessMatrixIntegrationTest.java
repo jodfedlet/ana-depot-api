@@ -37,6 +37,7 @@ class AdminAccessMatrixIntegrationTest extends ApiTestSupport {
 			rule("GET /api/v1/admin/payments(/[^/]+)?", MANAGER_UP),
 			rule("(GET|POST) /api/v1/admin/reservations/[^/]+/(payments|ledger|reconciliation)", ALL),
 			rule("GET /api/v1/admin/payment-attempts", ALL),
+			rule("(GET|POST) /api/v1/admin/me/recovery-codes", ALL),   // a member's own recovery codes
 			rule("[A-Z]+ /api/v1/admin/reservations(/.*)?", ALL),
 			rule("GET /api/v1/admin/inventory(/.*)?", ALL),
 			rule("[A-Z]+ /api/v1/admin/inventory(/.*)?", MANAGER_UP),

@@ -38,6 +38,9 @@ class ProductionConfigGuard {
 		for (var warning : warnings(url, properties)) {
 			log.warn("Production configuration: {}", warning);
 		}
+		if (!Boolean.parseBoolean(environment.getProperty("ana.staff.require-mfa", "false"))) {
+			log.error("Production configuration: staff second-factor enforcement is OFF (ANA_STAFF_REQUIRE_MFA=false). Anyone with a staff password can use the administration. Turn it on once every member has enrolled (docs/auth.md).");
+		}
 	}
 
 	static List<String> problems(String url, String username, String password, AnaProperties properties) {

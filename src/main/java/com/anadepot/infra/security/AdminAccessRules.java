@@ -25,6 +25,9 @@ final class AdminAccessRules {
 		a.requestMatchers(HttpMethod.POST, A + "/reservations/*/payment-adjustments", A + "/payments/*/reversal").hasAuthority(perm(Permission.PAYMENTS_CORRECT));
 		a.requestMatchers(HttpMethod.GET, A + "/payments", A + "/payments/*").hasAuthority(perm(Permission.REPORTS_VIEW));
 
+		// the member's own recovery codes: any active team member (including a session that got in with a recovery code, who must make a new set)
+		a.requestMatchers(A + "/me/**").hasAuthority(StaffAuthoritiesConverter.STAFF);
+
 		a.requestMatchers(A + "/reservations/**").hasAuthority(perm(Permission.RESERVATIONS));
 
 		a.requestMatchers(HttpMethod.GET, A + "/inventory", A + "/inventory/**").hasAuthority(perm(Permission.INVENTORY_VIEW));

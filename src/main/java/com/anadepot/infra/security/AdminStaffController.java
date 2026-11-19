@@ -4,6 +4,7 @@ import com.anadepot.core.staff.model.StaffInvitation;
 import com.anadepot.core.staff.model.StaffMember;
 import com.anadepot.core.staff.model.StaffRole;
 import com.anadepot.infra.web.QueryParams;
+import com.anadepot.core.staff.service.StaffRecoveryService;
 import com.anadepot.core.staff.service.StaffService;
 import com.anadepot.infra.customer.CustomerJpaRepository;
 import jakarta.validation.Valid;
@@ -35,7 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 class AdminStaffController {
 
 	/** {@code initial}: the first administrator, provisioned from configuration rather than invited (no inviter). */
-	record MemberView(UUID userId, boolean active, String role, boolean you, boolean initial, String displayName, String email, String note, Instant joinedAt, Instant updatedAt) {
+	record MemberView(UUID userId, boolean active, String role, int recoveryCodesRemaining, boolean you, boolean initial, String displayName, String email, String note, Instant joinedAt, Instant updatedAt) {
 
 		/** Personal data: never printed. */
 		@Override
@@ -65,11 +66,13 @@ class AdminStaffController {
 	}
 
 	private final StaffService staff;
+	private final StaffRecoveryService recovery;
 	private final CustomerJpaRepository customers;
 	private final Clock clock;
 
-	AdminStaffController(StaffService staff, CustomerJpaRepository customers, Clock clock) {
+	AdminStaffController(StaffService staff, StaffRecoveryService recovery, CustomerJpaRepository customers, Clock clock) {
 		this.staff = staff;
+		this.recovery = recovery;
 		this.customers = customers;
 		this.clock = clock;
 	}
@@ -79,21 +82,22 @@ class AdminStaffController {
 		var members = staff.members();
 		Map<UUID, CustomerJpaRepository.AccountName> names = new HashMap<>();
 		customers.findNamesByAuthUserIds(members.stream().map(StaffMember::userId).toList()).forEach(n -> names.put(n.authUserId(), n));
-		return members.stream().map(m -> view(m, names.get(m.userId()), authentication.getName())).toList();
+		var codes = recovery.remaining(members.stream().map(StaffMember::userId).toList());
+		return members.stream().map(m -> view(m, names.get(m.userId()), authentication.getName(), codes.getOrDefault(m.userId(), 0))).toList();
 	}
 
 	@PutMapping("/{userId}")
 	MemberView setActive(@PathVariable UUID userId, @Valid @RequestBody ActiveRequest body, Authentication authentication) {
 		var saved = staff.setActive(userId, body.active(), Actors.staff(authentication));
 		var name = customers.findNamesByAuthUserIds(List.of(userId)).stream().findFirst().orElse(null);
-		return view(saved, name, authentication.getName());
+		return view(saved, name, authentication.getName(), recovery.remaining(List.of(userId)).getOrDefault(userId, 0));
 	}
 
 	@PutMapping("/{userId}/role")
 	MemberView setRole(@PathVariable UUID userId, @Valid @RequestBody RoleRequest body, Authentication authentication) {
 		var saved = staff.changeRole(userId, QueryParams.enumOf(StaffRole.class, body.role(), "role"), Actors.staff(authentication));
 		var name = customers.findNamesByAuthUserIds(List.of(userId)).stream().findFirst().orElse(null);
-		return view(saved, name, authentication.getName());
+		return view(saved, name, authentication.getName(), recovery.remaining(List.of(userId)).getOrDefault(userId, 0));
 	}
 
 	@GetMapping("/invitations")
@@ -116,9 +120,9 @@ class AdminStaffController {
 		staff.revokeInvitation(id, Actors.staff(authentication));
 	}
 
-	private static MemberView view(StaffMember m, CustomerJpaRepository.AccountName name, String callerId) {
+	private static MemberView view(StaffMember m, CustomerJpaRepository.AccountName name, String callerId, int codes) {
 		var display = name == null ? null : ((name.firstName() == null ? "" : name.firstName()) + " " + (name.lastName() == null ? "" : name.lastName())).strip();
-		return new MemberView(m.userId(), m.active(), m.role().name(), m.userId().toString().equals(callerId), m.grantedBy() == null, display == null || display.isEmpty() ? null : display, name == null ? null : name.email(), m.note(),
+		return new MemberView(m.userId(), m.active(), m.role().name(), codes, m.userId().toString().equals(callerId), m.grantedBy() == null, display == null || display.isEmpty() ? null : display, name == null ? null : name.email(), m.note(),
 				m.grantedAt(), m.updatedAt());
 	}
 }

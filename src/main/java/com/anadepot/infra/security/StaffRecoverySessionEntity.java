@@ -1,0 +1,22 @@
+package com.anadepot.infra.security;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.UUID;
+
+@Entity
+@Table(name = "staff_recovery_sessions")
+class StaffRecoverySessionEntity {
+
+	@Id
+	UUID id;
+	UUID userId;
+	String sessionId;
+	Instant createdAt;
+	Instant expiresAt;
+
+	protected StaffRecoverySessionEntity() {
+	}
+}

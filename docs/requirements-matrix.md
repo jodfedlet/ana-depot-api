@@ -68,6 +68,7 @@ Column "Where": FE = `ana-depot-web/src/...`, BE = `ana-depot-api/src/main/java/
 | PAY-7 | Customer sees payment history and balances | High | PASS | `CustomerViews`, `PaymentHistory` | `OnlinePaymentIntegrationTest.theCustomerSees…`, `map-reservation.test.ts` | Added in this program |
 | PAY-8 | Admin: history, details, method (Stripe/cash), failed attempts, reconciliation, reports by method | High | PASS | `AdminPayment*Controller`, `features/admin/payments`, `reports` | `AdminPaymentApiIntegrationTest`, `AdminReportApiIntegrationTest`, e2e:admin, e2e:stripe-real | Method split added in this program |
 | PAY-9 | Partial payments, overpayments, prepayment timing, refunds | High | BLOCKED | current behaviour documented in `payments-stripe.md` | `AdminPaymentApiIntegrationTest` (cash partial/over) | **D1–D4** |
+| PAY-11 | Payment wording is truthful and follows what the backend says is available (card online + pay at pickup; never "cash only", never a card advertised when off) | High | PASS | BE `OnlinePaymentController.options`, `CheckoutGateway.availability`; FE `lib/payments/capabilities.ts`, `PaymentCapabilitiesProvider`, ~15 screens | `OnlinePaymentIntegrationTest.theBackendStatesWhichPaymentOptionsExistRightNow` + `whenPickupIsClosed…`, `capabilities.test.ts`, `i18n.test.ts` (payment messaging), e2e:payment-messaging (fr+ht, every state), e2e:stripe-real | Creole unreviewed (**D21**). Receipts/notifications do not exist (**D19**) |
 | PAY-10 | Stripe merchant, HTG presentment/settlement, fees | Critical | BLOCKED | Stripe disabled by default | — | **D5**, external |
 
 ## 5. Administration
@@ -113,7 +114,7 @@ Column "Where": FE = `ana-depot-web/src/...`, BE = `ana-depot-api/src/main/java/
 | ARC-2 | Flyway immutable migrations, RLS on every table, Data API locked down | Critical | PASS (local) | V1–V15 | `FlywayMigrationIntegrationTest`, `MigrationRlsConventionTest`, `DataApiLockdownIntegrationTest` | Hosted Supabase not verified |
 | ARC-3 | Outbox, idempotency, dedup, bounded retries, observability | High | PASS | ADRs 0002–0010 | `OutboxIntegrationTest`, `DeduplicationIntegrationTest`, `RetryPolicyTest`, `ObservabilityIntegrationTest` | — |
 | PER-1 | No N+1 on list endpoints | High | PASS | — | `QueryCountIntegrationTest` (statement counts at two data sizes) | Added in this program |
-| PER-2 | Request latency <= 1 s | High | see report | `scripts/measure-latency.mjs` | measured locally (final report) | Hosted/mobile-network latency not measured |
+| PER-2 | Request latency <= 1 s | High | PARTIAL | `CatalogSearchPerformanceTest` (opt-in), `ana-depot-web/scripts/measure-latency.mjs` | MEASURED (Testcontainers PostgreSQL 17, use-case level): search over **20,000 products**, 8 scenarios, worst p95 **107.6 ms** (prefix search), worst max 198 ms; plain listing p95 22 ms | **Not measured:** HTTP end-to-end and server-rendered pages under load, because the local browser stack was lost to an interrupted session and not rebuilt; hosted, TLS and mobile-network latency. Run `node scripts/measure-latency.mjs` (web repo) on a seeded stack to close it |
 | OPS-1 | Health, readiness, metrics on a private port, timeouts, graceful shutdown, container image | High | PASS (local) | `docs/operations.md`, `Dockerfile` | `ManagementPortIntegrationTest`, `StorageHealthIndicatorTest`; image built and run | Hosted/restore drills: staging |
 
 ## Inconsistencies found
@@ -124,3 +125,18 @@ Column "Where": FE = `ana-depot-web/src/...`, BE = `ana-depot-api/src/main/java/
 
 ## What is not covered by this matrix
 Hosted Supabase (migrations, RLS on the hosted Data API, TOTP setting, SMTP), real Cloudflare R2, real Stripe (any country), TLS/HSTS/edge behaviour, monitoring/alerts, backup restore timing, Safari/Firefox/physical devices. See `docs/staging/`.
+
+## Test results (this program; exact counts)
+| Suite | Result | Level |
+|---|---|---|
+| API (`mvn test`, all classes) | **454 run, 0 failures, 0 errors, 7 skipped** (432 before; +22: staff 17, payment history, capability states, N+1 guard) | UNIT/INT |
+| Web unit (`vitest`) | **320 passed**, 36 files; `tsc` clean; ESLint 0 errors, 1 pre-existing warning (`public/offline.js`) | UNIT |
+| `e2e:storefront` | 145 / 0 | LOCAL-E2E (final code) |
+| `e2e:admin` | 139 / 0 | LOCAL-E2E (final code) |
+| `e2e:a11y` (new) | 136 page scans, 0 violations (after fixing 4 defect classes it found) | LOCAL-E2E (final code) |
+| `e2e:payment-messaging` (new) | 97 / 0 (capability response stubbed = MOCK; every state x fr/ht, desktop + mobile) | LOCAL-E2E / MOCK |
+| `e2e:pwa` | 56 / 0 | LOCAL-E2E (final code) |
+| `e2e:stripe-real` | 57 / 0 (real API, local FAKE Stripe, real capability answer BOTH) | LOCAL-E2E / FAKE |
+| `e2e:team` (new) | 30 / 0 on two consecutive runs, real GoTrue TOTP; **not re-run on the very last commit** (only the sign-out button style, a11y labels and payment wording changed after it) | LOCAL-E2E |
+| `e2e:stripe` (mocked) | 72 / 0 at the previous baseline; **not re-run on final code** (the local scratch stack was lost to an interrupted session) | MOCK |
+| Search performance, 20,000 products | worst p95 107.6 ms | MEASURED (local) |

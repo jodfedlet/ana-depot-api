@@ -56,7 +56,8 @@ class PickupSettingsApiIntegrationTest extends ApiTestSupport {
 		get("/api/v1/admin/settings/pickup", admin).andExpect(status().isOk())
 				.andExpect(jsonPath("$.enabled").value(false))
 				.andExpect(jsonPath("$.version").doesNotExist())
-				.andExpect(jsonPath("$.holdPeriodDays").doesNotExist())   // no default hold period
+				.andExpect(jsonPath("$.holdPeriodDays").doesNotExist())   // the store has set none of its own...
+				.andExpect(jsonPath("$.effectiveHoldPeriodDays").value(3))   // ...so the approved default of three days (D6) applies to newly ready reservations
 				.andExpect(jsonPath("$.location.storeName").value(""));
 	}
 

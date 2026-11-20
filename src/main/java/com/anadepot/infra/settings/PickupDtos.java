@@ -26,9 +26,12 @@ final class PickupDtos {
 	record InstructionsDto(Map<String, String> general, Map<String, String> contact, Map<String, String> accepted, Map<String, String> ready, Map<String, String> policy) {
 	}
 
-	/** Admin view/edit. {@code version}: null = never saved; PUT must echo the version that was loaded. */
+	/**
+	 * Admin view/edit. {@code version}: null = never saved; PUT must echo the version that was loaded. {@code holdPeriodDays}: the store's own number (null = none set);
+	 * {@code effectiveHoldPeriodDays}: what is actually applied to a newly ready reservation (the store's number, else the approved default, D6). Read-only: ignored on PUT.
+	 */
 	record PickupSettingsDto(boolean enabled, Map<String, String> unavailableMessage, @Valid LocationDto location, @Valid InstructionsDto instructions,
-			Integer holdPeriodDays, Long version, Instant updatedAt, String updatedBy) {
+			Integer holdPeriodDays, Integer effectiveHoldPeriodDays, Long version, Instant updatedAt, String updatedBy) {
 	}
 
 	/** Public view: location and instructions ONLY when pickup is available; otherwise just the status (and the owner's public message when disabled). */

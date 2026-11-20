@@ -16,18 +16,21 @@ import org.springframework.web.bind.annotation.RestController;
 class AdminSettingsController {
 
 	private final StoreSettingsService settings;
+	private final com.anadepot.core.reservation.service.HoldPolicy holdPolicy;
 
-	AdminSettingsController(StoreSettingsService settings) {
+	AdminSettingsController(StoreSettingsService settings, com.anadepot.core.reservation.service.HoldPolicy holdPolicy) {
 		this.settings = settings;
+		this.holdPolicy = holdPolicy;
 	}
 
 	@GetMapping
 	PickupDtos.PickupSettingsDto get() {
-		return PickupMapper.dto(settings.getPickup());
+		return PickupMapper.dto(settings.getPickup(), (int) holdPolicy.holdPeriod().toDays());
 	}
 
 	@PutMapping
 	PickupDtos.PickupSettingsDto put(@Valid @RequestBody PickupDtos.PickupSettingsDto body, Authentication authentication) {
-		return PickupMapper.dto(settings.savePickup(PickupMapper.domain(body), body.version(), Actors.staff(authentication)));
+		var saved = settings.savePickup(PickupMapper.domain(body), body.version(), Actors.staff(authentication));
+		return PickupMapper.dto(saved, (int) holdPolicy.holdPeriod().toDays());
 	}
 }

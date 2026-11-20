@@ -36,8 +36,13 @@ final class PickupMapper {
 		return new PickupDtos.InstructionsDto(text(i.general()), text(i.contact()), text(i.accepted()), text(i.ready()), text(i.policy()));
 	}
 
+	/** The stored form: the effective hold period is computed when the settings are read, never stored. */
 	static PickupDtos.PickupSettingsDto dto(PickupSettings s) {
-		return new PickupDtos.PickupSettingsDto(s.enabled(), text(s.unavailableMessage()), dto(s.location()), dto(s.instructions()), s.holdPeriodDays(), s.version(), s.updatedAt(),
+		return dto(s, null);
+	}
+
+	static PickupDtos.PickupSettingsDto dto(PickupSettings s, Integer effectiveHoldDays) {
+		return new PickupDtos.PickupSettingsDto(s.enabled(), text(s.unavailableMessage()), dto(s.location()), dto(s.instructions()), s.holdPeriodDays(), effectiveHoldDays, s.version(), s.updatedAt(),
 				s.updatedBy() == null ? null : s.updatedBy().toString());
 	}
 

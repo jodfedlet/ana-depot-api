@@ -49,10 +49,12 @@ public class OnlinePaymentServiceImpl implements OnlinePaymentService {
 	private final TransactionBoundary tx;
 	private final Clock clock;
 	private final com.anadepot.core.notification.service.NotificationRecorder notifications;
+	private final com.anadepot.core.shared.AuditRecorder audit;
 
 	public OnlinePaymentServiceImpl(PaymentAttemptRepository attempts, ReservationRepository reservations, CustomerRepository customers, PaymentService payments,
 			CheckoutGateway gateway, IdempotencyService idempotency, OperationMetrics metrics, TransactionBoundary tx, Clock clock,
-			com.anadepot.core.notification.service.NotificationRecorder notifications) {
+			com.anadepot.core.notification.service.NotificationRecorder notifications, com.anadepot.core.shared.AuditRecorder audit) {
+		this.audit = audit;
 		this.notifications = notifications;
 		this.attempts = attempts;
 		this.reservations = reservations;
@@ -239,8 +241,34 @@ public class OnlinePaymentServiceImpl implements OnlinePaymentService {
 				attempts.update(current.withFailure(e.failureCode(), now));
 				return "FAILURE_RECORDED";
 			}
+			case CHARGE_REFUNDED -> {
+				return observeRefund(e, current, reservation);
+			}
 		}
 		return "IGNORED";
+	}
+
+	/**
+	 * D1: the owner refunded in the provider's dashboard. We only OBSERVE it: the cumulative refunded amount is stored on the attempt (so the staff screen's "refund due" clears) and
+	 * audited. The ledger is not touched. A refund for an attempt that never succeeded, or in another currency, is flagged for a person instead of trusted.
+	 */
+	private String observeRefund(ProviderEvent e, PaymentAttempt attempt, Reservation reservation) {
+		var now = clock.instant();
+		if (attempt.status() != AttemptStatus.SUCCEEDED || attempt.paymentId() == null) {
+			attempts.update(attempt.flagged("refund_without_payment", now));
+			return "REFUND_FLAGGED";
+		}
+		if (e.amount() == null || e.currency() == null || !attempt.amount().currency().name().equalsIgnoreCase(e.currency())) {
+			attempts.update(attempt.flagged("refund_amount_or_currency_mismatch", now));
+			return "REFUND_FLAGGED";
+		}
+		if (e.amount().compareTo(attempt.refundedAmount()) <= 0) {
+			return "REFUND_NOT_NEWER";   // an older or repeated notification: the amount only ever grows
+		}
+		var saved = attempts.update(attempt.withRefundObserved(e.amount(), now));
+		audit.record(com.anadepot.core.shared.AuditEvent.of("PAYMENT_REFUND_OBSERVED", "reservation", reservation.id(), com.anadepot.core.shared.Actor.system(),
+				java.util.Map.of("refunded", attempt.refundedAmount().toPlainString()), java.util.Map.of("refunded", saved.refundedAmount().toPlainString(), "currency", saved.amount().currency().name()), "observed from the provider"));
+		return "REFUND_OBSERVED";
 	}
 
 	private String markProcessing(PaymentAttempt a) {

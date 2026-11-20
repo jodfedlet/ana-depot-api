@@ -9,35 +9,45 @@ import java.util.UUID;
  * ledger entry, created from a verified provider event. {@code amount} is what the backend asked the provider to charge.
  */
 public record PaymentAttempt(UUID id, UUID reservationId, Money amount, AttemptStatus status, String sessionId, String paymentIntentId, String checkoutUrl,
-		Instant expiresAt, UUID paymentId, boolean requiresAttention, String attentionReason, String failureCode, UUID createdByUserId, Instant createdAt, Instant updatedAt) {
+		Instant expiresAt, UUID paymentId, boolean requiresAttention, String attentionReason, String failureCode, UUID createdByUserId, Instant createdAt, Instant updatedAt, java.math.BigDecimal refundedAmount, Instant refundObservedAt) {
 
 	public static PaymentAttempt open(UUID id, UUID reservationId, Money amount, UUID createdBy, Instant now) {
-		return new PaymentAttempt(id, reservationId, amount, AttemptStatus.PENDING, null, null, null, null, null, false, null, null, createdBy, now, now);
+		return new PaymentAttempt(id, reservationId, amount, AttemptStatus.PENDING, null, null, null, null, null, false, null, null, createdBy, now, now, java.math.BigDecimal.ZERO, null);
 	}
 
 	public PaymentAttempt withSession(String sessionId, String checkoutUrl, Instant expiresAt, Instant now) {
-		return new PaymentAttempt(id, reservationId, amount, status, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, failureCode, createdByUserId, createdAt, now);
+		return new PaymentAttempt(id, reservationId, amount, status, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, failureCode, createdByUserId, createdAt, now, refundedAmount, refundObservedAt);
 	}
 
 	public PaymentAttempt withStatus(AttemptStatus next, Instant now) {
-		return new PaymentAttempt(id, reservationId, amount, next, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, failureCode, createdByUserId, createdAt, now);
+		return new PaymentAttempt(id, reservationId, amount, next, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, failureCode, createdByUserId, createdAt, now, refundedAmount, refundObservedAt);
 	}
 
 	public PaymentAttempt withPaymentIntent(String intentId, Instant now) {
 		return intentId == null || intentId.equals(paymentIntentId) ? this
-				: new PaymentAttempt(id, reservationId, amount, status, sessionId, intentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, failureCode, createdByUserId, createdAt, now);
+				: new PaymentAttempt(id, reservationId, amount, status, sessionId, intentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, failureCode, createdByUserId, createdAt, now, refundedAmount, refundObservedAt);
 	}
 
 	public PaymentAttempt withFailure(String code, Instant now) {
-		return new PaymentAttempt(id, reservationId, amount, status, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, code, createdByUserId, createdAt, now);
+		return new PaymentAttempt(id, reservationId, amount, status, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, code, createdByUserId, createdAt, now, refundedAmount, refundObservedAt);
 	}
 
 	public PaymentAttempt succeeded(UUID paymentId, Instant now) {
-		return new PaymentAttempt(id, reservationId, amount, AttemptStatus.SUCCEEDED, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, failureCode, createdByUserId, createdAt, now);
+		return new PaymentAttempt(id, reservationId, amount, AttemptStatus.SUCCEEDED, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, failureCode, createdByUserId, createdAt, now, refundedAmount, refundObservedAt);
 	}
 
 	public PaymentAttempt flagged(String reason, Instant now) {
-		return new PaymentAttempt(id, reservationId, amount, status, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, true, reason, failureCode, createdByUserId, createdAt, now);
+		return new PaymentAttempt(id, reservationId, amount, status, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, true, reason, failureCode, createdByUserId, createdAt, now, refundedAmount, refundObservedAt);
+	}
+
+	/**
+	 * D1: the provider reports that {@code cumulative} (in the attempt's currency) has been refunded from this attempt's payment, done by the owner in the provider's dashboard. Only ever grows
+	 * and never exceeds what was charged; the ledger is untouched.
+	 */
+	public PaymentAttempt withRefundObserved(java.math.BigDecimal cumulative, Instant now) {
+		var capped = cumulative.min(amount.amount());
+		return new PaymentAttempt(id, reservationId, amount, status, sessionId, paymentIntentId, checkoutUrl, expiresAt, paymentId, requiresAttention, attentionReason, failureCode, createdByUserId, createdAt, now,
+				capped, now);
 	}
 
 	/** The open attempt can still be paid: it has a session that has not reached its expiry. */

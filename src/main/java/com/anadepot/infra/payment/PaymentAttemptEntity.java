@@ -35,6 +35,8 @@ class PaymentAttemptEntity extends com.anadepot.infra.persistence.InsertOnlyEnti
 	UUID createdByUserId;
 	Instant createdAt;
 	Instant updatedAt;
+	java.math.BigDecimal refundedAmount = java.math.BigDecimal.ZERO;
+	Instant refundObservedAt;
 
 	protected PaymentAttemptEntity() {
 	}

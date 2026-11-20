@@ -64,6 +64,8 @@ class PaymentAttemptRepositoryAdapter implements PaymentAttemptRepository {
 		e.requiresAttention = a.requiresAttention();
 		e.attentionReason = a.attentionReason();
 		e.failureCode = a.failureCode();
+		e.refundedAmount = a.refundedAmount();
+		e.refundObservedAt = a.refundObservedAt();
 		e.updatedAt = a.updatedAt();
 	}
 
@@ -142,6 +144,6 @@ class PaymentAttemptRepositoryAdapter implements PaymentAttemptRepository {
 
 	private static PaymentAttempt toDomain(PaymentAttemptEntity e) {
 		return new PaymentAttempt(e.id, e.reservationId, new Money(e.amount, e.currency), e.status, e.providerSessionId, e.providerPaymentIntentId, e.checkoutUrl, e.expiresAt, e.paymentId,
-				e.requiresAttention, e.attentionReason, e.failureCode, e.createdByUserId, e.createdAt, e.updatedAt);
+				e.requiresAttention, e.attentionReason, e.failureCode, e.createdByUserId, e.createdAt, e.updatedAt, e.refundedAmount, e.refundObservedAt);
 	}
 }

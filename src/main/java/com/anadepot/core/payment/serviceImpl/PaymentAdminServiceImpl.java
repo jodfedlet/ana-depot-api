@@ -19,8 +19,10 @@ public class PaymentAdminServiceImpl implements PaymentAdminService {
 	private final PaymentRepository payments;
 	private final ReservationRepository reservations;
 	private final TransactionBoundary tx;
+	private final com.anadepot.core.payment.repository.PaymentAttemptRepository attempts;
 
-	public PaymentAdminServiceImpl(PaymentRepository payments, ReservationRepository reservations, TransactionBoundary tx) {
+	public PaymentAdminServiceImpl(PaymentRepository payments, ReservationRepository reservations, TransactionBoundary tx, com.anadepot.core.payment.repository.PaymentAttemptRepository attempts) {
+		this.attempts = attempts;
 		this.payments = payments;
 		this.reservations = reservations;
 		this.tx = tx;
@@ -69,25 +71,38 @@ public class PaymentAdminServiceImpl implements PaymentAdminService {
 	}
 
 	@Override
-	public List<com.anadepot.core.shared.money.Money> refundDue(com.anadepot.core.reservation.model.Reservation r) {
+	public RefundPosition refundDue(com.anadepot.core.reservation.model.Reservation r) {
 		var ended = switch (r.status()) {
 			case REJECTED, CANCELLED, EXPIRED -> true;
 			default -> false;
 		};
 		if (!ended) {
-			return List.of();
+			return RefundPosition.NONE;
 		}
 		var card = payments.payments(r.id()).stream().filter(p -> p.method() == com.anadepot.core.payment.model.PaymentMethod.STRIPE_CHECKOUT).toList();
 		if (card.isEmpty()) {
-			return List.of();
+			return RefundPosition.NONE;
 		}
 		var reversed = payments.reversalsOf(card.stream().map(com.anadepot.core.payment.model.Payment::id).toList());
-		var perCurrency = new java.util.EnumMap<com.anadepot.core.shared.money.SupportedCurrency, com.anadepot.core.shared.money.Money>(com.anadepot.core.shared.money.SupportedCurrency.class);
+		var received = new java.util.EnumMap<com.anadepot.core.shared.money.SupportedCurrency, com.anadepot.core.shared.money.Money>(com.anadepot.core.shared.money.SupportedCurrency.class);
 		for (var p : card) {
 			if (!reversed.containsKey(p.id())) {
-				perCurrency.merge(p.amount().currency(), p.amount(), com.anadepot.core.shared.money.Money::plus);
+				received.merge(p.amount().currency(), p.amount(), com.anadepot.core.shared.money.Money::plus);
 			}
 		}
-		return List.copyOf(perCurrency.values());
+		var refunded = new java.util.EnumMap<com.anadepot.core.shared.money.SupportedCurrency, com.anadepot.core.shared.money.Money>(com.anadepot.core.shared.money.SupportedCurrency.class);
+		for (var a : attempts.forReservation(r.id(), 200)) {
+			if (a.refundedAmount().signum() > 0) {
+				refunded.merge(a.amount().currency(), new com.anadepot.core.shared.money.Money(a.refundedAmount(), a.amount().currency()), com.anadepot.core.shared.money.Money::plus);
+			}
+		}
+		var due = new java.util.ArrayList<com.anadepot.core.shared.money.Money>();
+		received.forEach((currency, money) -> {
+			var left = money.minusFloorZero(refunded.getOrDefault(currency, com.anadepot.core.shared.money.Money.zero(currency)));
+			if (left.isPositive()) {
+				due.add(left);
+			}
+		});
+		return new RefundPosition(List.copyOf(due), List.copyOf(refunded.values()));
 	}
 }

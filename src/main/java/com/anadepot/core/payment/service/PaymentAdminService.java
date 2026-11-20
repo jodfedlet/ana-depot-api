@@ -19,10 +19,16 @@ public interface PaymentAdminService {
 	List<PaymentView> forReservation(UUID reservationId);
 
 	/**
-	 * D1 (owner-approved): money received by CARD that the store must give back because the reservation ended without collection (rejected, cancelled
-	 * or expired). Per currency, never converted; empty for every other situation. The refund itself is done by the owner in the Stripe dashboard.
+	 * D1 (owner-approved): card money the store must give back because the reservation ended without collection (rejected, cancelled or expired), per currency, never converted.
+	 * Refunds are done by the owner in the provider's dashboard; the ones the provider reported (verified events) are subtracted, so the figure clears by itself. Empty lists for every
+	 * other situation.
 	 */
-	List<com.anadepot.core.shared.money.Money> refundDue(com.anadepot.core.reservation.model.Reservation reservation);
+	RefundPosition refundDue(com.anadepot.core.reservation.model.Reservation reservation);
+
+	/** {@code due}: still to be given back. {@code observedRefunded}: already refunded in the provider's dashboard, as the provider reported it. */
+	record RefundPosition(List<com.anadepot.core.shared.money.Money> due, List<com.anadepot.core.shared.money.Money> observedRefunded) {
+		public static final RefundPosition NONE = new RefundPosition(List.of(), List.of());
+	}
 
 	/** The full ledger of one reservation, oldest first (payments, reversals, adjustments). */
 	List<LedgerEntry> ledger(UUID reservationId);

@@ -73,8 +73,9 @@ class CoreConfig {
 	}
 
 	@Bean
-	com.anadepot.core.payment.service.PaymentAdminService paymentAdminService(com.anadepot.core.payment.repository.PaymentRepository payments, ReservationRepository reservations, TransactionBoundary tx) {
-		return new com.anadepot.core.payment.serviceImpl.PaymentAdminServiceImpl(payments, reservations, tx);
+	com.anadepot.core.payment.service.PaymentAdminService paymentAdminService(com.anadepot.core.payment.repository.PaymentRepository payments, ReservationRepository reservations, TransactionBoundary tx,
+			com.anadepot.core.payment.repository.PaymentAttemptRepository attempts) {
+		return new com.anadepot.core.payment.serviceImpl.PaymentAdminServiceImpl(payments, reservations, tx, attempts);
 	}
 
 	@Bean
@@ -125,8 +126,8 @@ class CoreConfig {
 	@Bean
 	com.anadepot.core.payment.service.OnlinePaymentService onlinePaymentService(com.anadepot.core.payment.repository.PaymentAttemptRepository attempts, ReservationRepository reservations,
 			CustomerRepository customers, PaymentService payments, com.anadepot.core.payment.service.CheckoutGateway gateway, IdempotencyService idempotency, OperationMetrics metrics,
-			TransactionBoundary tx, Clock clock, com.anadepot.core.notification.service.NotificationRecorder notifications) {
-		return new com.anadepot.core.payment.serviceImpl.OnlinePaymentServiceImpl(attempts, reservations, customers, payments, gateway, idempotency, metrics, tx, clock, notifications);
+			TransactionBoundary tx, Clock clock, com.anadepot.core.notification.service.NotificationRecorder notifications, AuditRecorder audit) {
+		return new com.anadepot.core.payment.serviceImpl.OnlinePaymentServiceImpl(attempts, reservations, customers, payments, gateway, idempotency, metrics, tx, clock, notifications, audit);
 	}
 
 	@Bean

@@ -72,6 +72,7 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 		@Bean @Primary FakeGateway fakeGateway() { return new FakeGateway(); }
 	}
 
+	@Autowired com.anadepot.infra.persistence.AuditEventJpaRepository audits;
 	@Autowired FakeGateway gateway;
 	@Autowired PaymentRepository ledger;
 	@Autowired com.anadepot.core.notification.repository.NotificationRepository notifications;
@@ -133,6 +134,11 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 		var id = attempt.get("attemptId").asString();
 		return "{\"id\":\"" + eventId + "\",\"object\":\"event\",\"type\":\"" + type + "\",\"data\":{\"object\":{\"id\":\"cs_test_" + id + "\",\"object\":\"checkout.session\",\"payment_intent\":\"" + intent
 				+ "\",\"amount_total\":" + amountMinor + ",\"currency\":\"" + currency + "\",\"payment_status\":\"" + paymentStatus + "\",\"metadata\":{\"attempt_id\":\"" + id + "\"}}}}";
+	}
+
+	private static String refundEvent(String eventId, String intent, long refundedMinor, String currency) {
+		return "{\"id\":\"" + eventId + "\",\"object\":\"event\",\"type\":\"charge.refunded\",\"data\":{\"object\":{\"id\":\"ch_test_" + intent + "\",\"object\":\"charge\",\"payment_intent\":\"" + intent
+				+ "\",\"amount\":18000,\"amount_refunded\":" + refundedMinor + ",\"currency\":\"" + currency + "\"}}}";
 	}
 
 	private long stripePayments(Reservation r) {
@@ -479,6 +485,55 @@ class OnlinePaymentIntegrationTest extends ApiTestSupport {
 		// the customer's own view never carries the flag
 		var view = post("/api/v1/reservations/lookup", Map.of("reference", r.reference(), "phone", phone(r)), null, null).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 		assertThat(view).doesNotContain("refundDue");
+	}
+
+	@Test
+	void aRefundTheOwnerMakesInTheStripeDashboardIsObservedAndClearsTheRefundDueFigure_butNeverTouchesTheLedger() throws Exception {   // D1 lifecycle
+		var staff = newStaffToken();
+		var r = readyBoth();
+		var attempt = checkout(r, "USD", key(), 201);
+		assertThat(deliver(sessionEvent("evt_rf_pay", "checkout.session.completed", attempt, "pi_rf_1", "18000", "usd", "paid"))).isEqualTo(200);
+		post("/api/v1/admin/reservations/" + r.id() + "/cancel", Map.of("reason", "no show"), staff, key()).andExpect(status().isOk());
+		java.util.function.Supplier<JsonNode> detail = () -> {
+			try {
+				return JSON.readTree(get("/api/v1/admin/reservations/" + r.id(), staff).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+			} catch (Exception e) {
+				throw new IllegalStateException(e);
+			}
+		};
+		assertThat(detail.get().get("refundDue").get(0).get("amount").asString()).isEqualTo("180.00");
+		assertThat(detail.get().get("refundedInProvider")).isEmpty();
+
+		// a partial refund in the dashboard: what is left to give back shrinks, per currency
+		assertThat(deliver(refundEvent("evt_rf_1", "pi_rf_1", 5000, "usd"))).isEqualTo(200);
+		assertThat(detail.get().get("refundDue").get(0).get("amount").asString()).isEqualTo("130.00");
+		assertThat(detail.get().get("refundedInProvider").get(0).get("amount").asString()).isEqualTo("50.00");
+		// duplicates and older notifications change nothing
+		assertThat(deliver(refundEvent("evt_rf_1", "pi_rf_1", 5000, "usd"))).isEqualTo(200);
+		assertThat(deliver(refundEvent("evt_rf_old", "pi_rf_1", 2000, "usd"))).isEqualTo(200);
+		assertThat(detail.get().get("refundedInProvider").get(0).get("amount").asString()).isEqualTo("50.00");
+		// the full refund clears the flag; an over-large figure is capped at what was charged
+		assertThat(deliver(refundEvent("evt_rf_full", "pi_rf_1", 99999, "usd"))).isEqualTo(200);
+		assertThat(detail.get().get("refundDue")).isEmpty();
+		assertThat(detail.get().get("refundedInProvider").get(0).get("amount").asString()).isEqualTo("180.00");
+
+		// the ledger is untouched: the money was received, and the books are consistent
+		assertThat(stripePayments(r)).isEqualTo(1);
+		assertThat(payments.reconcile(r.id()).lines()).allMatch(l -> l.cachedPaid().equals(l.ledgerPaid()));
+		assertThat(reservations.get(r.id()).paid().get(com.anadepot.core.shared.money.SupportedCurrency.USD)).isEqualTo(com.anadepot.testsupport.TestData.usd("180.00"));
+		var trail = audits.findByTargetTypeAndTargetIdOrderByOccurredAtAsc("reservation", r.id().toString());
+		assertThat(trail).extracting(a -> a.getAction()).contains("PAYMENT_REFUND_OBSERVED");
+	}
+
+	@Test
+	void aRefundInTheWrongCurrencyForAnUnknownPaymentOrForAnUnpaidAttemptIsNeverTrusted() throws Exception {
+		var r = readyBoth();
+		var attempt = checkout(r, "USD", key(), 201);
+		assertThat(deliver(refundEvent("evt_rf_unpaid", "pi_unpaid", 100, "usd"))).as("unknown payment intent: acknowledged, nothing changes").isEqualTo(200);
+		assertThat(deliver(sessionEvent("evt_rf_pay2", "checkout.session.completed", attempt, "pi_rf_2", "18000", "usd", "paid"))).isEqualTo(200);
+		assertThat(deliver(refundEvent("evt_rf_wrong", "pi_rf_2", 18000, "htg"))).isEqualTo(200);
+		var flagged = JSON.readTree(get("/api/v1/admin/payment-attempts?reservationId=" + r.id(), newStaffToken()).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		assertThat(flagged.toString()).contains("refund_amount_or_currency_mismatch");
 	}
 
 	@Test

@@ -16,6 +16,8 @@ public record ProviderEvent(String eventId, Kind kind, String sessionId, String 
 		SESSION_EXPIRED,
 		PAYMENT_FAILED,
 		/** Informational for this integration (the Checkout events carry the outcome). */
-		PAYMENT_SUCCEEDED
+		PAYMENT_SUCCEEDED,
+		/** The owner refunded (part of) a payment in the provider's dashboard: {@code amount} is the CUMULATIVE refunded amount of that payment. Observed only (D1). */
+		CHARGE_REFUNDED
 	}
 }

@@ -71,7 +71,7 @@ final class AdminReservationDtos {
 	}
 
 	record Detail(UUID id, String reference, String status, String paymentStatus, String locale, Instant createdAt, Instant readyAt, Instant expiresAt, UUID customerId, Contact contact,
-			List<Line> lines, List<Balance> balances, Map<String, Object> pickup, Terms terms, List<Change> history, List<Note> notes, List<String> allowedActions, List<Amount> refundDue) {
+			List<Line> lines, List<Balance> balances, Map<String, Object> pickup, Terms terms, List<Change> history, List<Note> notes, List<String> allowedActions, List<Amount> refundDue, List<Amount> refundedInProvider) {
 	}
 
 	// ---- mapping ----
@@ -80,14 +80,15 @@ final class AdminReservationDtos {
 		return new Summary(r.id(), r.reference(), r.status().name(), r.paymentStatus().name(), r.createdAt(), contact(r), r.lines().size(), r.lines().stream().mapToInt(l -> l.quantity()).sum(), balances(r));
 	}
 
-	static Detail detail(Reservation r, List<com.anadepot.core.shared.money.Money> refundDue) {
+	static Detail detail(Reservation r, com.anadepot.core.payment.service.PaymentAdminService.RefundPosition refunds) {
 		var terms = r.termsAcceptedAt() == null ? null : new Terms(r.termsVersion(), r.termsAcceptedAt());
 		return new Detail(r.id(), r.reference(), r.status().name(), r.paymentStatus().name(), r.locale(), r.createdAt(), r.readyAt(), r.expiresAt(), r.customerId(), contact(r),
 				r.lines().stream().map(l -> new Line(l.id(), l.productId(), l.variantId(), l.productName(), l.productSku(), l.variantLabel(), l.unit().name(), l.quantity(),
 						l.unitPrice().currency().name(), l.unitPrice().amount().toPlainString(), l.pricingKind().name(), l.tierMinQuantity(), l.lineTotal().amount().toPlainString())).toList(),
 				balances(r), Json.readMap(r.pickupSnapshotJson()), terms, r.history().stream().map(AdminReservationDtos::change).toList(),
 				r.notes().stream().sorted(Comparator.comparing(ReservationNote::at)).map(AdminReservationDtos::note).toList(), allowedActions(r),
-				refundDue.stream().map(m -> new Amount(m.currency().name(), m.amount().toPlainString())).toList());
+				refunds.due().stream().map(m -> new Amount(m.currency().name(), m.amount().toPlainString())).toList(),
+				refunds.observedRefunded().stream().map(m -> new Amount(m.currency().name(), m.amount().toPlainString())).toList());
 	}
 
 	/** What the current state lets staff do next (the server still enforces every rule; this only saves the screen from guessing). */

@@ -33,6 +33,7 @@ class NotificationEntity {
 	Instant sentAt;
 	Instant createdAt;
 	Instant updatedAt;
+	Instant revivedAt;
 
 	protected NotificationEntity() {
 	}

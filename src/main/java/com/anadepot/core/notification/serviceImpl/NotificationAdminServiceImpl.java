@@ -42,14 +42,19 @@ public class NotificationAdminServiceImpl implements NotificationAdminService {
 	}
 
 	@Override
+	public long attention() {
+		return tx.inTransaction(() -> notifications.attentionCount());
+	}
+
+	@Override
 	public Notification retry(UUID id, Actor actor) {
 		return tx.inTransaction(() -> {
 			var n = notifications.findForUpdate(id).orElseThrow(() -> new NotFoundException("Notification", id));
-			if (n.status() != NotificationStatus.DEAD) {
-				throw new DomainRuleViolation("notification_not_retryable", "Only a message that gave up can be retried.");
+			if (n.status() != NotificationStatus.DEAD && n.status() != NotificationStatus.EXPIRED) {
+				throw new DomainRuleViolation("notification_not_retryable", "Only a message that gave up or waited too long can be resent.");
 			}
 			var now = clock.instant();
-			var saved = notifications.save(n.with(NotificationStatus.PENDING, 0, now, null, null, null, now));
+			var saved = notifications.save(n.revived(now));   // a new age starts now; the content is still checked against the reservation's CURRENT state before it is sent
 			audit.record(AuditEvent.of("NOTIFICATION_RETRY_REQUESTED", "notification", id, actor, Map.of("status", n.status().name()), Map.of("status", NotificationStatus.PENDING.name(), "type", n.type().name()), null));
 			return saved;
 		});

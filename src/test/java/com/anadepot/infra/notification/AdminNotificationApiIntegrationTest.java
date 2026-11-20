@@ -123,6 +123,11 @@ class AdminNotificationApiIntegrationTest extends ApiTestSupport {
 		assertThat(summary.get("counts").get("SENT").asInt()).isEqualTo(1);
 		assertThat(summary.get("counts").get("DEAD").asInt()).isEqualTo(1);
 		assertThat(summary.get("counts").get("SKIPPED_NO_RECIPIENT").asInt()).isEqualTo(1);
+		assertThat(summary.get("attention").asInt()).as("one message gave up: staff are told to look at it").isGreaterThanOrEqualTo(1);
+		assertThat(json(ADMIN + "?status=EXPIRED", staff).get("totalItems").asInt()).isZero();       // the new outcomes are valid filters
+		assertThat(json(ADMIN + "?status=SUPERSEDED", staff).get("totalItems").asInt()).isZero();
+		assertThat(summary.get("counts").has("EXPIRED")).isTrue();
+		assertThat(summary.get("counts").has("SUPERSEDED")).isTrue();
 		assertThat(summary.get("mode").asString()).isEqualTo("LOG");                      // the test profile runs without SMTP: the screen says nothing is delivered
 		assertThat(json(ADMIN + "?status=DEAD", staff).get("totalItems").asInt()).isEqualTo(1);
 		assertThat(json(ADMIN + "?status=SENT&type=RESERVATION_SUBMITTED", staff).get("totalItems").asInt()).isEqualTo(1);

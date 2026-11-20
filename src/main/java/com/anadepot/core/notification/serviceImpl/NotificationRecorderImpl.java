@@ -37,12 +37,13 @@ public class NotificationRecorderImpl implements NotificationRecorder {
 			hint = EmailAddress.mask(email);
 			hash = EmailAddress.hash(email);
 			// A reservation form can name any address: one address can only be written to so often, so a stranger cannot be flooded through our shop.
-			if (notifications.countRecentForRecipient(hash, now.minus(Duration.ofHours(1))) >= perRecipientPerHour) {
+			// Only what a PUBLIC action can cause is held back: a message that needs staff (or a verified provider event) can never be used to flood anyone, and must not be lost.
+			if (r.type().customerTriggered() && notifications.countRecentForRecipient(hash, now.minus(Duration.ofHours(1))) >= perRecipientPerHour) {
 				status = NotificationStatus.SKIPPED_THROTTLED;
 			}
 		}
 		var id = UUID.randomUUID();
 		notifications.insertIfAbsent(new Notification(id, UUID.randomUUID(), r.dedupeKey(), r.type(), r.reservationId(), r.paymentId(), r.attemptId(), r.locale() == null ? "fr" : r.locale(),
-				hint, hash, status, 0, now, null, null, null, now, now));
+				hint, hash, status, 0, now, null, null, null, now, now, null));
 	}
 }

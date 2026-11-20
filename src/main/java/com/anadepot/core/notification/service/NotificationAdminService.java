@@ -18,4 +18,7 @@ public interface NotificationAdminService {
 
 	/** Only a DEAD message can be retried (409 otherwise). Audited. The message goes back to the queue with a fresh attempt budget. */
 	Notification retry(UUID id, Actor actor);
+
+	/** Messages staff should look at: gave up (DEAD) or an IMPORTANT message that expired unsent. Superseded and informational-expired messages are not counted. */
+	long attention();
 }

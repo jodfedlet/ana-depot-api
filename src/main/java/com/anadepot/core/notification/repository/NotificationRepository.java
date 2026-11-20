@@ -38,4 +38,7 @@ public interface NotificationRepository {
 
 	/** Creation time of the oldest message still waiting; null when none (feeds the backlog alert). */
 	Instant oldestWaiting();
+
+	/** DEAD messages plus EXPIRED messages of an important type. */
+	long attentionCount();
 }

@@ -97,6 +97,7 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 	@Autowired NotificationRecorder recorder;
 	@Autowired NotificationJpaRepository jpa;
 	@Autowired com.anadepot.core.reservation.service.ReservationAdminService adminReservations;
+	@Autowired com.anadepot.core.notification.service.NotificationAdminService adminNotifications;
 
 	Product mattress;
 	Instant t0;
@@ -456,13 +457,14 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 	}
 
 	@Test
-	void aMessageTooOldToBeTrueIsNotSent() {
+	void aMessageTooOldToBeTrueIsNotSent_andIsExpiredNotFailed() {
 		var r = mixed("client@example.com");
 		dispatcher.dispatchOnce(t0.plus(Duration.ofHours(73)));
 		var n = row(r, NotificationType.RESERVATION_SUBMITTED);
-		assertThat(n.status()).isEqualTo(NotificationStatus.DEAD);
+		assertThat(n.status()).isEqualTo(NotificationStatus.EXPIRED);   // not DEAD: nothing failed
 		assertThat(n.lastErrorCode()).isEqualTo("stale");
 		assertThat(transport.sent).isEmpty();
+		assertThat(notifications.attentionCount()).as("an informational message that expired needs nobody's attention").isZero();
 	}
 
 	@Test
@@ -474,10 +476,73 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 		cash(r, SupportedCurrency.USD);
 		reservations.collect(r.id(), staff, null);            // collected before the dispatcher ever ran
 		drain(t0);
-		assertThat(row(r, NotificationType.RESERVATION_READY_FOR_PICKUP).status()).isEqualTo(NotificationStatus.DEAD);
+		assertThat(row(r, NotificationType.RESERVATION_READY_FOR_PICKUP).status()).isEqualTo(NotificationStatus.SUPERSEDED);   // not DEAD: deliberately not sent, nothing failed
 		assertThat(row(r, NotificationType.RESERVATION_READY_FOR_PICKUP).lastErrorCode()).isEqualTo("state_changed");
+		assertThat(notifications.attentionCount()).as("a superseded message is not a failure").isZero();
 		assertThat(mailsOf(r).stream().map(OutgoingMail::subject)).noneMatch(s -> s.contains("prête à retirer"));
 		assertThat(mailsOf(r).stream().map(OutgoingMail::subject)).anyMatch(s -> s.contains("retirée"));
+	}
+
+	@Test
+	void importantMessagesKeepALongerLimitWhileInformationalOnesStillExpire() {
+		var r = mixed("client@example.com");
+		reservations.accept(r.id(), staff, null);
+		reservations.markReady(r.id(), staff, null, null);
+		dispatcher.dispatchOnce(t0.plus(Duration.ofDays(5)));   // mail was down for five days
+		assertThat(row(r, NotificationType.RESERVATION_SUBMITTED).status()).as("informational: 72 h").isEqualTo(NotificationStatus.EXPIRED);
+		assertThat(row(r, NotificationType.RESERVATION_CONFIRMED).status()).isEqualTo(NotificationStatus.SENT);
+		assertThat(row(r, NotificationType.RESERVATION_READY_FOR_PICKUP).status()).as("important: 14 days, and the reservation is still ready").isEqualTo(NotificationStatus.SENT);
+		assertThat(mailsOf(r).stream().map(OutgoingMail::subject)).anyMatch(subject -> subject.contains("prête à retirer"));
+		assertThat(notifications.attentionCount()).isZero();
+	}
+
+	@Test
+	void anImportantMessageThatExpiredIsFlaggedToStaffAndCanBeResentWithANewAge() {
+		var r = mixed("client@example.com");
+		reservations.accept(r.id(), staff, null);
+		reservations.markReady(r.id(), staff, null, null);
+		dispatcher.dispatchOnce(t0.plus(Duration.ofDays(15)));   // beyond even the important limit
+		var ready = row(r, NotificationType.RESERVATION_READY_FOR_PICKUP);
+		assertThat(ready.status()).isEqualTo(NotificationStatus.EXPIRED);
+		assertThat(notifications.attentionCount()).as("the customer may never have been told").isEqualTo(2);   // confirmed + ready
+		assertThat(transport.sent).isEmpty();
+
+		var resent = adminNotifications.retry(ready.id(), staff);
+		assertThat(resent.status()).isEqualTo(NotificationStatus.PENDING);
+		assertThat(resent.revivedAt()).isNotNull();
+		assertThat(resent.createdAt()).isEqualTo(ready.createdAt());   // history is kept; only the age clock restarts
+		dispatcher.dispatchOnce(Instant.now().plusSeconds(30));      // the reservation is still ready: the message is still true
+		assertThat(row(r, NotificationType.RESERVATION_READY_FOR_PICKUP).status()).isEqualTo(NotificationStatus.SENT);
+		assertThat(mailsOf(r).stream().map(OutgoingMail::subject)).anyMatch(subject -> subject.contains("prête à retirer"));
+		assertThat(notifications.attentionCount()).isEqualTo(1);        // the confirmation is still unsent and still flagged
+	}
+
+	@Test
+	void aSupersededMessageCannotBeResentBecauseItWouldNotBeTrue() {
+		var r = mixed("client@example.com");
+		reservations.accept(r.id(), staff, null);
+		reservations.markReady(r.id(), staff, null, null);
+		cash(r, SupportedCurrency.HTG);
+		cash(r, SupportedCurrency.USD);
+		reservations.collect(r.id(), staff, null);
+		drain(t0);
+		var ready = row(r, NotificationType.RESERVATION_READY_FOR_PICKUP);
+		assertThat(ready.status()).isEqualTo(NotificationStatus.SUPERSEDED);
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> adminNotifications.retry(ready.id(), staff)).extracting(e -> ((com.anadepot.core.shared.DomainRuleViolation) e).code()).isEqualTo("notification_not_retryable");
+	}
+
+	@Test
+	void onlyWhatAPublicActionCanCauseIsThrottled_staffTriggeredMessagesAreNeverDropped() {
+		var victim = "flood@example.com";
+		var last = (Reservation) null;
+		for (int i = 0; i < 11; i++) {
+			last = submitFor(victim, "fr", "Marie", line(mattress, 1, SupportedCurrency.HTG));
+		}
+		assertThat(row(last, NotificationType.RESERVATION_SUBMITTED).status()).as("the 11th form submission in an hour is held back").isEqualTo(NotificationStatus.SKIPPED_THROTTLED);
+		reservations.accept(last.id(), staff, null);
+		reservations.markReady(last.id(), staff, null, null);
+		assertThat(row(last, NotificationType.RESERVATION_CONFIRMED).status()).as("a decision by the store is never lost to the throttle").isEqualTo(NotificationStatus.PENDING);
+		assertThat(row(last, NotificationType.RESERVATION_READY_FOR_PICKUP).status()).isEqualTo(NotificationStatus.PENDING);
 	}
 
 	@Test
@@ -504,7 +569,7 @@ class NotificationFlowIntegrationTest extends AbstractIntegrationTest {
 		assertThat(after.status()).isEqualTo(ReservationStatus.COLLECTED);
 		assertThat(after.balances().values()).allMatch(b -> !b.due().isPositive());
 		assertThat(payments.reconcile(r.id()).lines()).allMatch(l -> l.cachedPaid().equals(l.ledgerPaid()));
-		assertThat(rowsOf(r)).isNotEmpty().allMatch(n -> n.status() == NotificationStatus.RETRY || n.status() == NotificationStatus.DEAD);   // waiting, not lost
+		assertThat(rowsOf(r)).isNotEmpty().allMatch(n -> n.status() == NotificationStatus.RETRY || n.status() == NotificationStatus.DEAD || n.status() == NotificationStatus.SUPERSEDED);   // waiting or deliberately superseded, never silently lost
 		// the mail server comes back: the queued messages that are still true go out
 		transport.failure = m -> null;
 		drain(t0.plus(Duration.ofHours(1)));

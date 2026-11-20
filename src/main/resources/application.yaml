@@ -156,6 +156,7 @@ ana:
       backoff-multiplier: 2.0
       max-backoff: PT6H
       lease: PT2M
+      important-max-age: ${ANA_MAIL_IMPORTANT_MAX_AGE:14d}      # IMPORTANT messages (decision, ready, cancelled, expired, payment received) are kept this long; they are still checked against the reservation's current state before sending
       max-age: ${ANA_MAIL_MAX_AGE:72h}                           # a message older than this is not sent any more (it would no longer be true)
   outbox:
     dispatcher-enabled: true

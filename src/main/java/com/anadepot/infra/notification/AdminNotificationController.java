@@ -37,7 +37,8 @@ class AdminNotificationController {
 	}
 
 	/** {@code mode}: SMTP (messages are sent), LOG (development: files, nothing is sent) or DISABLED (messages wait and are NOT sent). */
-	record Summary(Map<String, Long> counts, String mode, Instant oldestWaitingAt) {
+	/** {@code attention}: messages staff should look at (gave up, or an important message that expired unsent). Superseded messages are not failures and are not counted. */
+	record Summary(Map<String, Long> counts, long attention, String mode, Instant oldestWaitingAt) {
 	}
 
 	private final NotificationAdminService service;
@@ -67,7 +68,7 @@ class AdminNotificationController {
 		var counts = new LinkedHashMap<String, Long>();
 		service.summary().forEach((s, n) -> counts.put(s.name(), n));
 		var oldest = jpa.oldestWaiting();
-		return new Summary(counts, mail.smtpMode() ? "SMTP" : mail.logMode() ? "LOG" : "DISABLED", oldest);
+		return new Summary(counts, service.attention(), mail.smtpMode() ? "SMTP" : mail.logMode() ? "LOG" : "DISABLED", oldest);
 	}
 
 	@PostMapping("/{id}/retry")

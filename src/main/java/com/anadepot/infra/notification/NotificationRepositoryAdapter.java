@@ -88,6 +88,12 @@ class NotificationRepositoryAdapter implements NotificationRepository {
 	}
 
 	@Override
+	public long attentionCount() {
+		var important = java.util.Arrays.stream(NotificationType.values()).filter(NotificationType::important).map(Enum::name).toList();
+		return jpa.attention(important);
+	}
+
+	@Override
 	public Instant oldestWaiting() {
 		return jpa.oldestWaiting();
 	}
@@ -122,6 +128,7 @@ class NotificationRepositoryAdapter implements NotificationRepository {
 		e.sentAt = n.sentAt();
 		e.createdAt = n.createdAt();
 		e.updatedAt = n.updatedAt();
+		e.revivedAt = n.revivedAt();
 		if (n.status() != NotificationStatus.PROCESSING) {
 			e.leaseUntil = null;
 		}
@@ -130,6 +137,6 @@ class NotificationRepositoryAdapter implements NotificationRepository {
 
 	private static Notification toDomain(NotificationEntity e) {
 		return new Notification(e.id, e.eventId, e.dedupeKey, NotificationType.valueOf(e.type), e.reservationId, e.paymentId, e.attemptId, e.locale, e.recipientHint, e.recipientHash,
-				NotificationStatus.valueOf(e.status), e.attempts, e.nextAttemptAt, e.lastErrorCode, e.lastErrorAt, e.sentAt, e.createdAt, e.updatedAt);
+				NotificationStatus.valueOf(e.status), e.attempts, e.nextAttemptAt, e.lastErrorCode, e.lastErrorAt, e.sentAt, e.createdAt, e.updatedAt, e.revivedAt);
 	}
 }

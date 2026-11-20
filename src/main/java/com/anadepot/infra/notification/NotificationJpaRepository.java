@@ -45,6 +45,9 @@ interface NotificationJpaRepository extends JpaRepository<NotificationEntity, UU
 	@Query("select n.status, count(n) from NotificationEntity n group by n.status")
 	List<Object[]> countByStatus();
 
+	@Query("select count(n) from NotificationEntity n where n.status = 'DEAD' or (n.status = 'EXPIRED' and n.type in :important)")
+	long attention(@Param("important") java.util.Collection<String> important);
+
 	@Query("select min(n.createdAt) from NotificationEntity n where n.status in ('PENDING', 'RETRY', 'PROCESSING')")
 	Instant oldestWaiting();
 

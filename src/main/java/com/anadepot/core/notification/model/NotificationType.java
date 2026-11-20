@@ -30,6 +30,22 @@ public enum NotificationType {
 		return template;
 	}
 
+	/**
+	 * Messages the customer must not miss: a decision about their reservation, that it is ready, or that money was received. They keep a longer age limit, bypass the per-address
+	 * throttle (only staff or a verified provider event can cause them, so a stranger cannot use them to flood an address) and, when they expire, raise a warning to staff.
+	 */
+	public boolean important() {
+		return switch (this) {
+			case RESERVATION_CONFIRMED, RESERVATION_REJECTED, RESERVATION_READY_FOR_PICKUP, RESERVATION_CANCELLED, RESERVATION_EXPIRED, PAYMENT_RECEIVED -> true;
+			default -> false;
+		};
+	}
+
+	/** Messages that a PUBLIC action (a reservation form, a checkout) can cause: the only ones the per-address throttle may hold back. */
+	public boolean customerTriggered() {
+		return this == RESERVATION_SUBMITTED || this == PAYMENT_FAILED || this == CHECKOUT_EXPIRED;
+	}
+
 	public boolean isPayment() {
 		return this == PAYMENT_RECEIVED || this == PAYMENT_FAILED || this == CHECKOUT_EXPIRED;
 	}

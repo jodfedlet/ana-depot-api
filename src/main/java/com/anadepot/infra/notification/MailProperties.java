@@ -15,7 +15,7 @@ public record MailProperties(@DefaultValue("log") String mode, Smtp smtp, String
 
 	public MailProperties {
 		smtp = smtp == null ? new Smtp(null, 587, null, null, true, true, false, Duration.ofSeconds(5), Duration.ofSeconds(10), Duration.ofSeconds(10)) : smtp;
-		dispatcher = dispatcher == null ? new Dispatcher(true, Duration.ofSeconds(5), 20, 8, Duration.ofMinutes(1), 2.0, Duration.ofHours(6), Duration.ofMinutes(2), Duration.ofHours(72)) : dispatcher;
+		dispatcher = dispatcher == null ? new Dispatcher(true, Duration.ofSeconds(5), 20, 8, Duration.ofMinutes(1), 2.0, Duration.ofHours(6), Duration.ofMinutes(2), Duration.ofHours(72), Duration.ofDays(14)) : dispatcher;
 	}
 
 	public record Smtp(String host, @DefaultValue("587") int port, String username, String password, @DefaultValue("true") boolean auth, @DefaultValue("true") boolean starttls,
@@ -28,10 +28,13 @@ public record MailProperties(@DefaultValue("log") String mode, Smtp smtp, String
 		}
 	}
 
-	/** {@code maxAge}: a message that waited longer than this (for example while mail was not configured) is not sent any more: "your reservation is ready" from three days ago would mislead. */
+	/**
+	 * {@code maxAge}: an informational message that waited longer than this (for example while mail was not configured) is not sent any more. {@code importantMaxAge}: the same for an IMPORTANT message
+	 * ({@code NotificationType.important}), which is kept much longer because the customer must not miss it and every message is checked against the reservation's current state anyway before it is sent.
+	 */
 	public record Dispatcher(@DefaultValue("true") boolean enabled, @DefaultValue("5s") Duration pollInterval, @DefaultValue("20") int batchSize, @DefaultValue("8") int maxAttempts,
 			@DefaultValue("1m") Duration initialBackoff, @DefaultValue("2.0") double backoffMultiplier, @DefaultValue("6h") Duration maxBackoff, @DefaultValue("2m") Duration lease,
-			@DefaultValue("72h") Duration maxAge) {
+			@DefaultValue("72h") Duration maxAge, @DefaultValue("14d") Duration importantMaxAge) {
 	}
 
 	public boolean smtpMode() {

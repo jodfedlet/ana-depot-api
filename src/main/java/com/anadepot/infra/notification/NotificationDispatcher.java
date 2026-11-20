@@ -57,9 +57,10 @@ public class NotificationDispatcher {
 		this.tx = new TransactionTemplate(manager);
 		this.clock = clock;
 		this.metrics = metrics;
-		for (var status : List.of(NotificationStatus.PENDING, NotificationStatus.RETRY, NotificationStatus.DEAD)) {
+		for (var status : List.of(NotificationStatus.PENDING, NotificationStatus.RETRY, NotificationStatus.DEAD, NotificationStatus.EXPIRED, NotificationStatus.SUPERSEDED)) {
 			Gauge.builder("anadepot.notifications." + status.name().toLowerCase(), repository, r -> r.counts().getOrDefault(status, 0L)).register(metrics);
 		}
+		Gauge.builder("anadepot.notifications.attention", repository, r -> r.attentionCount()).description("Customer messages staff should look at: gave up, or an important message that expired unsent").register(metrics);
 		Gauge.builder("anadepot.notifications.oldest.waiting.age", repository, r -> {
 			var oldest = r.oldestWaiting();
 			return oldest == null ? 0 : Math.max(0, Duration.between(oldest, clock.instant()).toMillis() / 1000.0);
@@ -90,8 +91,9 @@ public class NotificationDispatcher {
 	}
 
 	private boolean deliver(Notification n, Instant now) {
-		if (Duration.between(n.createdAt(), now).compareTo(config.dispatcher().maxAge()) > 0) {
-			settleFailure(n, now, new MailFailure("stale", true, null));   // too old to be true any more (for example it waited while mail was not configured)
+		var limit = n.type().important() ? config.dispatcher().importantMaxAge() : config.dispatcher().maxAge();
+		if (Duration.between(n.waitingSince(), now).compareTo(limit) > 0) {
+			settleFinal(n, now, NotificationStatus.EXPIRED, "stale");   // waited longer than its limit (for example while mail was not configured): not sent; an important one is flagged to staff
 			return false;
 		}
 		try {
@@ -104,7 +106,11 @@ public class NotificationDispatcher {
 			settleSuccess(n, now);
 			return true;
 		} catch (MailFailure f) {
-			settleFailure(n, now, f);
+			if ("state_changed".equals(f.code())) {
+				settleFinal(n, now, NotificationStatus.SUPERSEDED, "state_changed");   // the reservation moved on: deliberately not sent, not a failure
+			} else {
+				settleFailure(n, now, f);
+			}
 		} catch (TemplateProcessingException e) {
 			settleFailure(n, now, new MailFailure("render_failed", true, e));
 		} catch (RuntimeException e) {
@@ -118,6 +124,22 @@ public class NotificationDispatcher {
 		tx.executeWithoutResult(s -> repository.findForUpdate(n.id()).filter(cur -> ours(cur, n)).ifPresent(cur -> repository.save(
 				cur.with(delivered ? NotificationStatus.SENT : NotificationStatus.CAPTURED, cur.attempts(), now, null, null, delivered ? now : null, now))));
 		metrics.counter("anadepot.notifications", "result", delivered ? "sent" : "captured", "type", n.type().name()).increment();
+	}
+
+	/** A final outcome that is not a delivery failure: SUPERSEDED (no longer true) or EXPIRED (too old). Never retried by itself. */
+	private void settleFinal(Notification n, Instant now, NotificationStatus status, String code) {
+		var saved = tx.execute(s -> repository.findForUpdate(n.id()).filter(cur -> ours(cur, n)).map(cur -> {
+			repository.save(cur.with(status, cur.attempts(), now, code, now, null, now));
+			return status;
+		}).orElse(null));
+		if (saved != null) {
+			metrics.counter("anadepot.notifications", "result", status.name().toLowerCase(), "type", n.type().name(), "code", code).increment();
+			if (status == NotificationStatus.EXPIRED && n.type().important()) {
+				log.warn("Notification {} ({}) expired unsent: the customer may not have been told; staff can resend it", n.id(), n.type());
+			} else {
+				log.info("Notification {} ({}) not sent: {}", n.id(), n.type(), code);
+			}
+		}
 	}
 
 	private void settleFailure(Notification n, Instant now, MailFailure f) {

@@ -280,4 +280,14 @@ class ReservationRepositoryAdapter implements ReservationRepository {
 		restored.restoreTerms(e.termsVersion, e.termsAcceptedAt);
 		return restored;
 	}
+
+	@Override
+	public java.util.List<java.util.UUID> findReadyPastDeadline(java.time.Instant now, int limit) {
+		return jpa.readyPastDeadline(now, org.springframework.data.domain.PageRequest.of(0, limit));
+	}
+
+	@Override
+	public java.util.List<java.util.UUID> findReadyNeedingReminder(java.time.Instant now, java.time.Instant cutoff, int limit) {
+		return jpa.readyNeedingReminder(now, cutoff, org.springframework.data.domain.PageRequest.of(0, limit));
+	}
 }

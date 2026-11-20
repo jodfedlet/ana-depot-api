@@ -64,9 +64,9 @@ public record CustomerReservationView(UUID id, String reference, String status, 
 		var balances = r.balances().values().stream()
 				.map(b -> new Balance(b.total().currency().name(), b.total().amount().toPlainString(), b.paid().amount().toPlainString(), b.due().amount().toPlainString())).toList();
 		var contact = new Contact(r.contact().firstName(), r.contact().lastName(), r.contact().dialCode(), r.contact().phone(), r.contact().email());
-		// canCancel is false until the business decides if and when a customer may cancel (open decision): there is no customer cancel endpoint
+		// D7 (owner-approved): the BACKEND says whether the customer may still cancel online (pending review or confirmed); the screen never guesses
 		return new CustomerReservationView(r.id(), r.reference(), r.status().name(), r.paymentStatus().name(), r.locale(), r.createdAt(), r.readyAt(), r.expiresAt(),
-				contact, lines, totals, balances, Json.readMap(r.pickupSnapshotJson()), false, events(r), List.copyOf(payments));
+				contact, lines, totals, balances, Json.readMap(r.pickupSnapshotJson()), r.customerMayCancel(), events(r), List.copyOf(payments));
 	}
 
 	private static Amount amount(Money m) {

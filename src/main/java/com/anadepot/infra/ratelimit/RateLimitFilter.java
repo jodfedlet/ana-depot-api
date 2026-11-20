@@ -31,7 +31,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
 	/** Operation names are the keys of {@code ana.rate-limit.limits}. Stricter limits belong on the sensitive/expensive ones. */
 	private static final List<Rule> RULES = List.of(
 			new Rule(HttpMethod.POST, "/api/v1/reservations", "reservation.submit"),
-			new Rule(HttpMethod.POST, "/api/v1/reservations/lookup", "reservation.lookup"),   // POST: the phone number must not travel in a URL
+			new Rule(HttpMethod.POST, "/api/v1/reservations/lookup", "reservation.lookup"),
+			new Rule(HttpMethod.POST, "/api/v1/reservations/cancel", "reservation.lookup"),   // same proof of ownership (reference + phone), same throttle   // POST: the phone number must not travel in a URL
 			new Rule(HttpMethod.POST, "/api/v1/reservations/*/payments/checkout-session", "payment.checkout"),
 			new Rule(HttpMethod.POST, "/api/v1/reservations/*/payments/status", "payment.status"),
 			new Rule(HttpMethod.POST, "/api/v1/me/staff-invitation", "staff.accept"),   // redeeming a code: very few tries

@@ -89,6 +89,55 @@ class ReservationController {
 		return reservations.lookup(reference, body.phone()).map(views::detail).orElseThrow(ReservationController::notFound);
 	}
 
+	record CancelRequest(String reference, String phone, String reason) {
+
+		/** Personal text and a phone number: never printed. */
+		@Override
+		public String toString() {
+			return "CancelRequest[redacted]";
+		}
+	}
+
+	/**
+	 * D7 (owner-approved): the customer cancels their own reservation until the store starts preparing it. The same ownership proof as {@code /lookup} (reference AND phone; an unknown
+	 * reference, a malformed one and a wrong phone all answer the same 404, and the same per-reference throttle applies). A reason is required.
+	 */
+	@PostMapping("/cancel")
+	CustomerReservationView cancel(@RequestBody CancelRequest body, Authentication authentication) {
+		var issues = new java.util.ArrayList<FieldIssue>();
+		if (body == null || body.reference() == null || body.reference().isBlank()) {
+			issues.add(new FieldIssue("reference", "required"));
+		} else if (body.reference().length() > 40) {
+			issues.add(new FieldIssue("reference", "too_long"));
+		}
+		if (body == null || body.phone() == null || body.phone().isBlank()) {
+			issues.add(new FieldIssue("phone", "required"));
+		} else if (body.phone().length() > 40) {
+			issues.add(new FieldIssue("phone", "too_long"));
+		}
+		if (body == null || body.reason() == null || body.reason().isBlank()) {
+			issues.add(new FieldIssue("reason", "required"));
+		} else if (body.reason().strip().length() > 300) {
+			issues.add(new FieldIssue("reason", "too_long"));
+		}
+		if (!issues.isEmpty()) {
+			throw new FieldValidationException(issues);
+		}
+		var reference = body.reference().strip().toUpperCase(java.util.Locale.ROOT).replaceAll("\\s+", "");
+		if (!REFERENCE.matcher(reference).matches()) {
+			throw notFound();
+		}
+		var decision = limiter.check("reservation.lookup.reference", "ref:" + reference);
+		if (!decision.allowed()) {
+			throw new RateLimitExceededException(decision.retryAfter());
+		}
+		try {
+			return views.detail(reservations.cancelByCustomer(reference, body.phone(), Actors.customerOrGuest(authentication), body.reason()));
+		} catch (NotFoundException e) {
+			throw notFound();   // whatever was not found (reference or phone), the answer is identical
+		}
+	}
+
 	static NotFoundException notFound() {
 		return NotFoundException.withCode(NOT_FOUND_CODE, NOT_FOUND_MESSAGE);
 	}

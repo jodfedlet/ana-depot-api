@@ -22,7 +22,7 @@ public interface ReservationService {
 	/** Releases the reserved stock. */
 	Reservation reject(UUID id, Actor actor, RejectReason reason, String note, String idempotencyKey);
 
-	/** {@code expiresAt} is null unless a hold period is configured (undecided). */
+	/** {@code expiresAt} null = the pickup deadline from the hold policy (D6): ready time plus the hold period. */
 	Reservation markReady(UUID id, Actor actor, Instant expiresAt, String idempotencyKey);
 
 	/** Requires every currency paid; deducts physical stock and releases the reservation. */
@@ -31,8 +31,20 @@ public interface ReservationService {
 	/** Releases the reserved stock. */
 	Reservation cancel(UUID id, Actor actor, String reason, String idempotencyKey);
 
-	/** Releases the reserved stock. Triggered by the system once a hold policy exists. */
+	/** Releases the reserved stock. Done by the system when a ready reservation passes its pickup deadline (D6), or by staff. */
 	Reservation expire(UUID id, Actor actor, String idempotencyKey);
+
+	/**
+	 * D7 (owner-approved): the CUSTOMER cancels their own reservation while it is pending review or confirmed, giving a reason. Ownership is proven exactly as for a lookup (reference AND
+	 * phone); an unknown reference and a wrong phone answer the same way. Frees the reserved stock at once. Repeating it on an already cancelled reservation changes nothing.
+	 */
+	Reservation cancelByCustomer(String reference, String phone, Actor actor, String reason);
+
+	/** The system expires every ready reservation past its deadline, one transaction each. @return how many expired. */
+	int expireOverdue();
+
+	/** The system queues the reminder for every ready reservation close to its deadline that was not reminded (once per reservation). @return how many reminders were queued. */
+	int remindExpiring();
 
 	Reservation get(UUID id);
 

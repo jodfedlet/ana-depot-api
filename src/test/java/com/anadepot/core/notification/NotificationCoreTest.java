@@ -37,6 +37,7 @@ class NotificationCoreTest {
 		@Override public PageResult<Notification> list(NotificationQuery q, PageRequest p) { return new PageResult<>(rows, 0, 20, rows.size()); }
 		@Override public Map<NotificationStatus, Long> counts() { return new EnumMap<>(NotificationStatus.class); }
 		@Override public Instant oldestWaiting() { return null; }
+		@Override public long attentionCount() { return 0; }
 	}
 
 	final Memory repo = new Memory();

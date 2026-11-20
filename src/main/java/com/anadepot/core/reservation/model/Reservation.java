@@ -117,7 +117,7 @@ public final class Reservation {
 		move(ReservationStatus.REJECTED, reason.name(), note, now, actor);
 	}
 
-	/** {@code expiresAt} stays null unless a hold period has been configured: the business has not decided one. */
+	/** {@code expiresAt}: the pickup deadline (set by the service from the hold policy, D6), after which the system expires the reservation. */
 	public void markReady(Actor actor, Instant now, Instant expiresAt) {
 		require(status == ReservationStatus.CONFIRMED, "Only a confirmed reservation can be marked ready");
 		this.readyAt = now;
@@ -139,6 +139,21 @@ public final class Reservation {
 			throw new DomainRuleViolation("reason_required", "A cancellation needs a reason");
 		}
 		move(ReservationStatus.CANCELLED, "CANCELLED", reason.strip(), now, actor);
+	}
+
+	/** D7 (owner-approved): a customer may cancel while the store has not yet prepared the order (pending review or confirmed), giving a reason. After that they contact the store. */
+	public boolean customerMayCancel() {
+		return status == ReservationStatus.PENDING_REVIEW || status == ReservationStatus.CONFIRMED;
+	}
+
+	public void cancelByCustomer(Actor actor, Instant now, String reason) {
+		if (!customerMayCancel()) {
+			throw new DomainRuleViolation("cancellation_not_allowed", "A reservation can be cancelled online until the store starts preparing it. Please contact the store.");
+		}
+		if (reason == null || reason.isBlank()) {
+			throw new DomainRuleViolation("reason_required", "A cancellation needs a reason");
+		}
+		move(ReservationStatus.CANCELLED, "CUSTOMER_REQUEST", reason.strip(), now, actor);
 	}
 
 	public void expire(Actor actor, Instant now) {

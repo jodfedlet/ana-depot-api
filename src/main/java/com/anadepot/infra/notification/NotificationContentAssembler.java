@@ -99,7 +99,7 @@ class NotificationContentAssembler {
 		var trackUrl = base.isEmpty() ? null : base + "/" + locale + "/reservations";
 		var firstName = r.contact().firstName() == null ? "" : r.contact().firstName().strip();
 		var view = new EmailView(locale, r.reference(), firstName, EmailFormat.date(r.createdAt(), locale), lines, totals, balances, pickup, trackUrl, reasonKey(n.type(), r), paymentList, payment,
-				attempt, cardAvailable, pickupOpen, support, blankToNull(mail.termsUrl()), blankToNull(mail.privacyUrl()), mail.fromName());
+				attempt, cardAvailable, pickupOpen, support, blankToNull(mail.termsUrl()), blankToNull(mail.privacyUrl()), mail.fromName(), r.expiresAt() == null ? null : EmailFormat.date(r.expiresAt(), locale));
 		return new Assembled(view, r.contact().email());
 	}
 
@@ -113,6 +113,7 @@ class NotificationContentAssembler {
 			case RESERVATION_COLLECTED -> ReservationStatus.COLLECTED;
 			case RESERVATION_CANCELLED -> ReservationStatus.CANCELLED;
 			case RESERVATION_EXPIRED -> ReservationStatus.EXPIRED;
+			case RESERVATION_EXPIRING -> ReservationStatus.READY_FOR_PICKUP;   // a reminder to collect is only true while it is still waiting
 			default -> null;
 		};
 	}

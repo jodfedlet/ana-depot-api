@@ -10,6 +10,8 @@ ana:
     capture-directory: target/test-mail-capture
   outbox:
     dispatcher-enabled: false     # tests drive OutboxDispatcher.dispatchOnce() explicitly
+  reservation:
+    expiry-enabled: false         # tests run the expiry pass explicitly
   rate-limit:
     default-limit: { max-requests: 1000, window: PT1M }
     limits:

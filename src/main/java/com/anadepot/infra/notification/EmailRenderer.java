@@ -74,6 +74,8 @@ class EmailRenderer {
 			case RESERVATION_COLLECTED -> "collected";
 			case RESERVATION_CANCELLED -> "cancelled";
 			case RESERVATION_EXPIRED -> "expired";
+			case RESERVATION_EXPIRING -> "expiring";
+			case RESERVATION_CANCELLED_BY_CUSTOMER -> "cancelledByCustomer";
 			case PAYMENT_RECEIVED -> "paymentReceived";
 			case PAYMENT_FAILED -> "paymentFailed";
 			case CHECKOUT_EXPIRED -> "checkoutExpired";

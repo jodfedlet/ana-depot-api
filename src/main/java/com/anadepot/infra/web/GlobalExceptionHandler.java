@@ -32,7 +32,7 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	private static final Set<String> CONFLICTS = Set.of("insufficient_stock", "invalid_status", "already_paid", "already_reversed", "duplicate_sku",
 			"duplicate_currency_price", "payment_required", "idempotency_conflict", "idempotency_key_reuse", "inventory_exists", "concurrent_update",
 			"duplicate_slug", "category_has_active_products", "attribute_in_use", "option_in_use", "product_in_use", "variant_axis_in_use", "attribute_type_locked", "attribute_required_violation", "variant_in_use",
-			"payment_in_progress", "online_payment_reversal_unsupported", "already_staff", "last_active_owner", "invitation_not_pending", "notification_not_retryable");
+			"payment_in_progress", "online_payment_reversal_unsupported", "already_staff", "last_active_owner", "cancellation_not_allowed", "invitation_not_pending", "notification_not_retryable");
 
 	/** A dependency (object storage) is down or not configured: the caller's request was fine, try again later (503). */
 	private static final Set<String> UNAVAILABLE = Set.of("storage_unavailable", "storage_not_configured");

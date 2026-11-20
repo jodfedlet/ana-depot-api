@@ -25,4 +25,15 @@ interface ReservationJpaRepository extends JpaRepository<ReservationEntity, UUID
 
 	@Query("select coalesce(sum(l.quantity), 0) from ReservationLineEntity l where l.reservation.status in ('PENDING_REVIEW', 'CONFIRMED', 'READY_FOR_PICKUP') and l.variantId = :variantId")
 	long openHeldForVariant(UUID variantId);
+
+	@Query("select r.id from ReservationEntity r where r.status = 'READY_FOR_PICKUP' and r.expiresAt is not null and r.expiresAt <= :now order by r.expiresAt")
+	java.util.List<java.util.UUID> readyPastDeadline(@org.springframework.data.repository.query.Param("now") java.time.Instant now, org.springframework.data.domain.Pageable page);
+
+	@Query("""
+			select r.id from ReservationEntity r
+			where r.status = 'READY_FOR_PICKUP' and r.expiresAt is not null and r.expiresAt > :now and r.expiresAt <= :cutoff
+			and not exists (select 1 from NotificationEntity n where n.reservationId = r.id and n.type = 'RESERVATION_EXPIRING')
+			order by r.expiresAt
+			""")
+	java.util.List<java.util.UUID> readyNeedingReminder(@org.springframework.data.repository.query.Param("now") java.time.Instant now, @org.springframework.data.repository.query.Param("cutoff") java.time.Instant cutoff, org.springframework.data.domain.Pageable page);
 }

@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<!--/* reservation-cancelled-by-customer: reference, intro, payments. Layout, colours and every block live in html/fragments.html. */-->
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/fragments :: layout(#{email.cancelledByCustomer.title}, #{email.cancelledByCustomer.preheader}, ~{::main})}">
+<body>
+<th:block th:fragment="main">
+<th:block th:replace="~{html/fragments :: referenceBox}"></th:block>
+<p th:replace="~{html/fragments :: paragraph(#{email.cancelledByCustomer.intro})}"></p>
+<th:block th:replace="~{html/fragments :: payments}"></th:block>
+</th:block>
+</body>
+</html>

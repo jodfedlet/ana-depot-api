@@ -13,6 +13,7 @@ import com.anadepot.core.reservation.model.RejectReason;
 import com.anadepot.core.reservation.model.Reservation;
 import com.anadepot.core.reservation.model.ReservationLine;
 import com.anadepot.core.reservation.model.ReservationStatus;
+import com.anadepot.core.reservation.service.HoldPolicy;
 import com.anadepot.core.reservation.repository.PickupSnapshotProvider;
 import com.anadepot.core.reservation.repository.ReservationRepository;
 import com.anadepot.core.reservation.service.ReservationService;
@@ -66,11 +67,13 @@ public class ReservationServiceImpl implements ReservationService {
 	private final TransactionBoundary tx;
 	private final Clock clock;
 	private final PickupSnapshotProvider pickup;
+	private final HoldPolicy holdPolicy;
 	private final SecureRandom random = new SecureRandom();
 
 	public ReservationServiceImpl(ReservationRepository reservations, InventoryRepository inventory, CatalogService catalog,
 			CustomerRepository customers, AuditRecorder audit, DomainEventRecorder events, OperationMetrics metrics,
-			IdempotencyService idempotency, TransactionBoundary tx, Clock clock, PickupSnapshotProvider pickup, NotificationRecorder notifications) {
+			IdempotencyService idempotency, TransactionBoundary tx, Clock clock, PickupSnapshotProvider pickup, NotificationRecorder notifications, HoldPolicy holdPolicy) {
+		this.holdPolicy = holdPolicy;
 		this.pickup = pickup;
 		this.notifications = notifications;
 		this.reservations = reservations;
@@ -159,7 +162,10 @@ public class ReservationServiceImpl implements ReservationService {
 
 	@Override
 	public Reservation markReady(UUID id, Actor actor, Instant expiresAt, String key) {
-		return transition(id, actor, key, "ready", String.valueOf(expiresAt), r -> r.markReady(actor, clock.instant(), expiresAt), "reservation.ready_for_pickup", "RESERVATION_READY", null);
+		return transition(id, actor, key, "ready", String.valueOf(expiresAt), r -> {
+			var now = clock.instant();
+			r.markReady(actor, now, expiresAt != null ? expiresAt : now.plus(holdPolicy.holdPeriod()));   // D6: the pickup deadline is fixed now and never moves with later settings changes
+		}, "reservation.ready_for_pickup", "RESERVATION_READY", null);
 	}
 
 	@Override
@@ -175,6 +181,60 @@ public class ReservationServiceImpl implements ReservationService {
 	@Override
 	public Reservation expire(UUID id, Actor actor, String key) {
 		return transition(id, actor, key, "expire", "", r -> r.expire(actor, clock.instant()), "reservation.expired", "RESERVATION_EXPIRED", null);
+	}
+
+	@Override
+	public Reservation cancelByCustomer(String reference, String phone, Actor actor, String reason) {
+		var found = lookup(reference, phone).orElseThrow(() -> NotFoundException.withCode("reservation_not_found", "No reservation matches this reference and phone number."));
+		if (found.status() == ReservationStatus.CANCELLED) {
+			return found;   // a retry after success: nothing changes
+		}
+		var cancelActor = actor == null ? Actor.guest() : actor;
+		return tx.inTransaction(() -> {
+			var reservation = reservations.findByIdForUpdate(found.id()).orElseThrow(() -> new NotFoundException("Reservation", found.id()));
+			if (reservation.status() == ReservationStatus.CANCELLED) {
+				return reservation;
+			}
+			var before = reservation.status();
+			reservation.cancelByCustomer(cancelActor, clock.instant(), reason);
+			applyStockEffects(reservation, before);
+			reservations.save(reservation);
+			// the audit trail never holds the customer's own words: only that a reason was given and how long it was
+			record(reservation, "reservation.cancelled_by_customer", "RESERVATION_CANCELLED_BY_CUSTOMER", cancelActor, before, "customer reason (" + reason.strip().length() + " characters)");
+			return reservation;
+		});
+	}
+
+	@Override
+	public int expireOverdue() {
+		int expired = 0;
+		for (var id : reservations.findReadyPastDeadline(clock.instant(), 100)) {
+			try {
+				expire(id, Actor.system(), null);
+				expired++;
+			} catch (DomainRuleViolation e) {   // NotFoundException is one too
+				// somebody collected, cancelled or expired it in the meantime: nothing to do
+			}
+		}
+		return expired;
+	}
+
+	@Override
+	public int remindExpiring() {
+		var now = clock.instant();
+		int queued = 0;
+		for (var id : reservations.findReadyNeedingReminder(now, now.plus(holdPolicy.reminderLead()), 100)) {
+			queued += tx.inTransaction(() -> {
+				var r = reservations.findByIdForUpdate(id).orElse(null);
+				if (r == null || r.status() != ReservationStatus.READY_FOR_PICKUP || r.expiresAt() == null) {
+					return 0;
+				}
+				// the unique dedupe key (type + reservation) makes a second pass, or a second instance, a no-op
+				notifications.record(NotificationRequest.reservation(NotificationType.RESERVATION_EXPIRING, r.id(), r.locale(), r.contact().email()));
+				return 1;
+			});
+		}
+		return queued;
 	}
 
 	@Override
@@ -243,6 +303,7 @@ public class ReservationServiceImpl implements ReservationService {
 			case "reservation.collected" -> NotificationType.RESERVATION_COLLECTED;
 			case "reservation.cancelled" -> NotificationType.RESERVATION_CANCELLED;
 			case "reservation.expired" -> NotificationType.RESERVATION_EXPIRED;
+			case "reservation.cancelled_by_customer" -> NotificationType.RESERVATION_CANCELLED_BY_CUSTOMER;
 			default -> null;
 		};
 	}

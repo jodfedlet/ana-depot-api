@@ -35,7 +35,7 @@ class GuestReservationApiIntegrationTest extends ReservationHttpSupport {
 		assertThat(view.get("reference").asString()).matches("ANA-[A-Z2-9]{6}");
 		assertThat(view.get("status").asString()).isEqualTo("PENDING_REVIEW");
 		assertThat(view.get("paymentStatus").asString()).isEqualTo("UNPAID");
-		assertThat(view.get("canCancel").asBoolean()).isFalse();
+		assertThat(view.get("canCancel").asBoolean()).as("D7 (approved): a pending reservation may be cancelled by the customer").isTrue();
 		var line = view.get("lines").get(0);
 		assertThat(line.get("unitPrice").asString()).isEqualTo("25000.00");
 		assertThat(line.get("lineTotal").asString()).isEqualTo("50000.00");

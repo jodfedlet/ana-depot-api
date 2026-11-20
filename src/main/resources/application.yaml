@@ -114,6 +114,11 @@ ana:
       "[payment.status]": { max-requests: 60, window: PT1M }
       "[staff.accept]": { max-requests: 5, window: PT10M }
       "[staff.recovery]": { max-requests: 5, window: PT15M }
+  reservation:                                                   # D6 (owner-approved): ready reservations are held for pickup, reminded, then expired
+    default-hold-days: ${ANA_RESERVATION_HOLD_DAYS:3}           # used when the store's pickup settings name no number of days
+    reminder-lead: ${ANA_RESERVATION_REMINDER_LEAD:PT24H}       # the reminder goes out this long before the deadline
+    expiry-interval: ${ANA_RESERVATION_EXPIRY_INTERVAL:PT5M}
+    expiry-enabled: ${ANA_RESERVATION_EXPIRY_ENABLED:true}
   staff:
     require-mfa: ${ANA_STAFF_REQUIRE_MFA:false}                 # true = staff access needs a session that passed a second factor (Supabase aal2); recommended for production
     invitation-days: ${ANA_STAFF_INVITATION_DAYS:7}

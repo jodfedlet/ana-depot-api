@@ -107,8 +107,8 @@ class CoreConfig {
 	@Bean
 	ReservationService reservationService(ReservationRepository reservations, InventoryRepository inventory, CatalogService catalog, CustomerRepository customers,
 			AuditRecorder audit, DomainEventRecorder events, OperationMetrics metrics, IdempotencyService idempotency, TransactionBoundary tx, Clock clock, com.anadepot.core.reservation.repository.PickupSnapshotProvider pickup,
-			com.anadepot.core.notification.service.NotificationRecorder notifications) {
-		return new ReservationServiceImpl(reservations, inventory, catalog, customers, audit, events, metrics, idempotency, tx, clock, pickup, notifications);
+			com.anadepot.core.notification.service.NotificationRecorder notifications, com.anadepot.core.reservation.service.HoldPolicy holdPolicy) {
+		return new ReservationServiceImpl(reservations, inventory, catalog, customers, audit, events, metrics, idempotency, tx, clock, pickup, notifications, holdPolicy);
 	}
 
 	@Bean

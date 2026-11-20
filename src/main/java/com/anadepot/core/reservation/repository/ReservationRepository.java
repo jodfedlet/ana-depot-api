@@ -37,4 +37,10 @@ public interface ReservationRepository {
 
 	/** What one customer's reservations add up to, currency by currency (see {@link com.anadepot.core.customer.model.CustomerSummary}). */
 	com.anadepot.core.customer.model.CustomerSummary summaryOf(UUID customerId);
+
+	/** Ready reservations whose pickup deadline has passed, oldest deadline first (the system expires them). */
+	java.util.List<java.util.UUID> findReadyPastDeadline(java.time.Instant now, int limit);
+
+	/** Ready reservations whose deadline falls within {@code cutoff} but has not passed, and that were not reminded yet. */
+	java.util.List<java.util.UUID> findReadyNeedingReminder(java.time.Instant now, java.time.Instant cutoff, int limit);
 }

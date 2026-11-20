@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<!--/* reservation-expiring: reference, intro (with the pickup deadline), pickup, balances, paymentOptions, track. Layout, colours and every block live in html/fragments.html. */-->
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/fragments :: layout(#{email.expiring.title}, #{email.expiring.preheader}, ~{::main})}">
+<body>
+<th:block th:fragment="main">
+<th:block th:replace="~{html/fragments :: referenceBox}"></th:block>
+<p th:replace="~{html/fragments :: paragraph(#{email.expiring.intro(${v.expiresOn()})})}"></p>
+<th:block th:replace="~{html/fragments :: pickup}"></th:block>
+<th:block th:replace="~{html/fragments :: balances}"></th:block>
+<th:block th:replace="~{html/fragments :: paymentOptions}"></th:block>
+<p th:replace="~{html/fragments :: paragraph(#{email.track.text})}"></p>
+<table th:replace="~{html/fragments :: button(${v.trackUrl()}, #{email.track.button})}"></table>
+</th:block>
+</body>
+</html>

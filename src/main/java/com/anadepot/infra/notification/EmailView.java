@@ -8,7 +8,7 @@ import java.util.List;
  */
 public record EmailView(String locale, String reference, String firstName, String createdOn, List<Line> lines, List<Total> totals, List<Balance> balances, Pickup pickup,
 		String trackUrl, String reasonKey, List<Payment> payments, Payment payment, Attempt attempt, boolean cardAvailable, boolean pickupPayAvailable, Support support,
-		String termsUrl, String privacyUrl, String brandName) {
+		String termsUrl, String privacyUrl, String brandName, String expiresOn) {
 
 	/** One reservation line as it was snapshotted: name, variant, quantity, selling unit, and the unit price and subtotal in the line's own currency. */
 	public record Line(String name, String variant, int quantity, String unit, String unitPrice, String subtotal, String priceKind) {

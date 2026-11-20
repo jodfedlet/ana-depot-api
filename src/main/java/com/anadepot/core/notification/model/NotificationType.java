@@ -12,6 +12,10 @@ public enum NotificationType {
 	RESERVATION_COLLECTED("reservation-collected"),
 	RESERVATION_CANCELLED("reservation-cancelled"),
 	RESERVATION_EXPIRED("reservation-expired"),
+	/** D6: a ready reservation will expire soon if it is not collected (sent once, ahead of the pickup deadline). */
+	RESERVATION_EXPIRING("reservation-expiring"),
+	/** D7: confirmation to the customer that THEY cancelled their reservation online. */
+	RESERVATION_CANCELLED_BY_CUSTOMER("reservation-cancelled-by-customer"),
 	/** A payment was RECORDED in the ledger (cash at pickup, or a verified Stripe payment): never emitted for an unconfirmed payment. */
 	PAYMENT_RECEIVED("payment-received"),
 	/** A hosted checkout ended as FAILED according to a verified provider event. */
@@ -36,7 +40,7 @@ public enum NotificationType {
 	 */
 	public boolean important() {
 		return switch (this) {
-			case RESERVATION_CONFIRMED, RESERVATION_REJECTED, RESERVATION_READY_FOR_PICKUP, RESERVATION_CANCELLED, RESERVATION_EXPIRED, PAYMENT_RECEIVED -> true;
+			case RESERVATION_CONFIRMED, RESERVATION_REJECTED, RESERVATION_READY_FOR_PICKUP, RESERVATION_CANCELLED, RESERVATION_EXPIRED, RESERVATION_EXPIRING, PAYMENT_RECEIVED -> true;
 			default -> false;
 		};
 	}

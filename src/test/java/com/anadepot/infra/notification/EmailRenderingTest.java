@@ -23,7 +23,7 @@ class EmailRenderingTest {
 				"https://shop.example.test/" + locale + "/reservations", "PRODUCT_UNAVAILABLE",
 				List.of(new EmailView.Payment("HTG", "1 000,00 HTG", "email.method.cash", "18 novembre 2026"), new EmailView.Payment("USD", "12,50 USD", "email.method.card", "18 novembre 2026")),
 				new EmailView.Payment("USD", "12,50 USD", "email.method.card", "18 novembre 2026"), new EmailView.Attempt("USD", "12,50 USD"),
-				true, true, new EmailView.Support("magasin@example.test", "+509 0000 0000"), "https://shop.example.test/conditions", "https://shop.example.test/confidentialite", "Ana Dépôt");
+				true, true, new EmailView.Support("magasin@example.test", "+509 0000 0000"), "https://shop.example.test/conditions", "https://shop.example.test/confidentialite", "Ana Dépôt", "21 novembre 2026");
 	}
 
 	@ParameterizedTest
@@ -89,7 +89,7 @@ class EmailRenderingTest {
 		assertThat(withPickup.html()).contains("Magasin de test", "1, rue de l&#39;Essai, Port-au-Prince", "Lundi : 09:00 – 17:00", "Dimanche : Fermé", "Apportez votre référence.");
 		var base = view("fr", "Marie", "Chaussure");
 		var none = new EmailView(base.locale(), base.reference(), base.firstName(), base.createdOn(), base.lines(), base.totals(), base.balances(), null, base.trackUrl(), base.reasonKey(), base.payments(),
-				base.payment(), base.attempt(), base.cardAvailable(), base.pickupPayAvailable(), new EmailView.Support(null, null), null, null, base.brandName());
+				base.payment(), base.attempt(), base.cardAvailable(), base.pickupPayAvailable(), new EmailView.Support(null, null), null, null, base.brandName(), base.expiresOn());
 		var r = renderer.render(NotificationType.RESERVATION_SUBMITTED, none);
 		assertThat(r.html()).contains("Ne vous déplacez pas avant d’avoir reçu le message").doesNotContain("Magasin de test");
 		assertThat(r.html()).doesNotContain("Une question ?").doesNotContain("mailto:").doesNotContain("Conditions de réservation");   // nothing configured: nothing invented
@@ -99,7 +99,7 @@ class EmailRenderingTest {
 	void theTrackingButtonAppearsOnlyWithAConfiguredAddress() {
 		var base = view("fr", "Marie", "Chaussure");
 		var noLink = new EmailView(base.locale(), base.reference(), base.firstName(), base.createdOn(), base.lines(), base.totals(), base.balances(), base.pickup(), null, base.reasonKey(), base.payments(),
-				base.payment(), base.attempt(), base.cardAvailable(), base.pickupPayAvailable(), base.support(), null, null, base.brandName());
+				base.payment(), base.attempt(), base.cardAvailable(), base.pickupPayAvailable(), base.support(), null, null, base.brandName(), base.expiresOn());
 		assertThat(renderer.render(NotificationType.RESERVATION_SUBMITTED, view("fr", "Marie", "Chaussure")).html()).contains("href=\"https://shop.example.test/fr/reservations\"");
 		var r = renderer.render(NotificationType.RESERVATION_SUBMITTED, noLink);
 		assertThat(r.html()).doesNotContain("shop.example.test/fr/reservations").contains("Suivre ma réservation");   // the instructions in words remain
@@ -112,7 +112,7 @@ class EmailRenderingTest {
 		assertThat(both.html()).contains("payer par carte en ligne");
 		var b = view("fr", "Marie", "Chaussure");
 		var pickupOnly = new EmailView(b.locale(), b.reference(), b.firstName(), b.createdOn(), b.lines(), b.totals(), b.balances(), b.pickup(), b.trackUrl(), b.reasonKey(), b.payments(), b.payment(),
-				b.attempt(), false, true, b.support(), b.termsUrl(), b.privacyUrl(), b.brandName());
+				b.attempt(), false, true, b.support(), b.termsUrl(), b.privacyUrl(), b.brandName(), b.expiresOn());
 		var r = renderer.render(NotificationType.RESERVATION_READY_FOR_PICKUP, pickupOnly);
 		assertThat(r.html()).contains("Vous payez au magasin lors du retrait.").doesNotContain("par carte");
 		assertThat(r.text()).doesNotContain("carte");

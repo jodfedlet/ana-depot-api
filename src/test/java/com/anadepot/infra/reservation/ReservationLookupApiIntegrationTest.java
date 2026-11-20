@@ -123,7 +123,7 @@ class ReservationLookupApiIntegrationTest extends ReservationHttpSupport {
 	}
 
 	@Test
-	void thereIsNoCustomerCancelEndpoint() throws Exception {
+	void thereIsNoCancelByIdEndpoint_customerCancellationNeedsReferenceAndPhone() throws Exception {   // D7: see theCustomerCancels... below for the approved flow
 		var mattress = stockedMattress(5);
 		var created = reserve(request(freshPhone(), line(mattress, 1, "HTG")), null);
 		post("/api/v1/reservations/" + created.get("id").asString() + "/cancel", Map.of(), null, key()).andExpect(status().isUnauthorized());
@@ -140,5 +140,117 @@ class ReservationLookupApiIntegrationTest extends ReservationHttpSupport {
 		assertThat(contact.phoneMatches("700000")).isFalse();     // a suffix is not a match
 		assertThat(contact.phoneMatches("")).isFalse();
 		assertThat(contact.phoneMatches(null)).isFalse();
+	}
+
+	// ---- D7 (owner-approved): the customer cancels until the store starts preparing the order -----------------------------------------------------
+
+	@Autowired com.anadepot.core.notification.repository.NotificationRepository notificationRepository;
+	@Autowired com.anadepot.infra.persistence.AuditEventJpaRepository auditEvents;
+
+	private tools.jackson.databind.JsonNode cancel(String reference, String phone, String reason, int expected) throws Exception {
+		var payload = new java.util.LinkedHashMap<String, Object>();
+		payload.put("reference", reference);
+		payload.put("phone", phone);
+		if (reason != null) {
+			payload.put("reason", reason);
+		}
+		return body(post("/api/v1/reservations/cancel", payload, null, null).andExpect(status().is(expected)).andReturn());
+	}
+
+	private void asStaff(String action, String id) throws Exception {
+		post("/api/v1/admin/reservations/" + id + "/" + action, action.equals("ready") ? Map.of() : null, newStaffToken(), key()).andExpect(status().isOk());
+	}
+
+	private java.util.List<com.anadepot.core.notification.model.Notification> messages(String id, com.anadepot.core.notification.model.NotificationType type) {
+		return notificationRepository.list(new com.anadepot.core.notification.model.NotificationQuery(null, type, UUID.fromString(id)), new com.anadepot.core.shared.PageRequest(0, 20)).items();
+	}
+
+	@Test
+	void aCustomerCancelsAPendingOrConfirmedReservation_stockIsFreedTheStoreSeesWhoAndWhy_andTheyAreTold() throws Exception {
+		var mattress = stockedMattress(10);
+		var phone = freshPhone();
+		var pending = reserve(request(phone, line(mattress, 3, "HTG")), null);
+		assertThat(lookup(pending.get("reference").asString(), phone).get("canCancel").asBoolean()).as("the backend says the customer may still cancel").isTrue();
+		assertThat(inventory.get(mattress.id(), null).reserved()).isEqualTo(3);
+
+		var cancelled = cancel(pending.get("reference").asString(), phone, "J'ai trouvé moins cher ailleurs", 200);
+		assertThat(cancelled.get("status").asString()).isEqualTo("CANCELLED");
+		assertThat(cancelled.get("canCancel").asBoolean()).isFalse();
+		assertThat(inventory.get(mattress.id(), null).reserved()).as("the held stock is released at once").isZero();
+		assertThat(messages(pending.get("id").asString(), com.anadepot.core.notification.model.NotificationType.RESERVATION_CANCELLED_BY_CUSTOMER)).hasSize(1);
+		assertThat(messages(pending.get("id").asString(), com.anadepot.core.notification.model.NotificationType.RESERVATION_CANCELLED)).as("not the store's cancellation message").isEmpty();
+
+		// the store sees WHO cancelled and why (internal), the customer view never carries internal words
+		var staff = newStaffToken();
+		var detail = body(get("/api/v1/admin/reservations/" + pending.get("id").asString(), staff).andExpect(status().isOk()).andReturn());
+		var last = detail.get("history").get(detail.get("history").size() - 1);
+		assertThat(last.get("to").asString()).isEqualTo("CANCELLED");
+		assertThat(last.get("reasonCode").asString()).isEqualTo("CUSTOMER_REQUEST");
+		assertThat(last.get("reasonNote").asString()).isEqualTo("J'ai trouvé moins cher ailleurs");
+		assertThat(last.get("actor").get("kind").asString()).isEqualTo("CUSTOMER");
+
+		// a retry (a double click, a lost response) changes nothing and queues no second message
+		var again = cancel(pending.get("reference").asString(), phone, "J'ai trouvé moins cher ailleurs", 200);
+		assertThat(again.get("status").asString()).isEqualTo("CANCELLED");
+		assertThat(messages(pending.get("id").asString(), com.anadepot.core.notification.model.NotificationType.RESERVATION_CANCELLED_BY_CUSTOMER)).hasSize(1);
+
+		// a confirmed reservation too
+		var confirmed = reserve(request(freshPhone(), line(mattress, 2, "HTG")), null);
+		asStaff("accept", confirmed.get("id").asString());
+		var confirmedPhone = detail(confirmed.get("id").asString()).get("contact").get("phone").asString();
+		assertThat(cancel(confirmed.get("reference").asString(), confirmedPhone, "Plus besoin", 200).get("status").asString()).isEqualTo("CANCELLED");
+		assertThat(inventory.get(mattress.id(), null).reserved()).isZero();
+	}
+
+	private tools.jackson.databind.JsonNode detail(String id) throws Exception {
+		return body(get("/api/v1/admin/reservations/" + id, newStaffToken()).andExpect(status().isOk()).andReturn());
+	}
+
+	@Test
+	void cancellationNeedsTheSameProofAsALookup_andEveryMissIsTheSame404() throws Exception {
+		var mattress = stockedMattress(10);
+		var phone = freshPhone();
+		var created = reserve(request(phone, line(mattress, 1, "HTG")), null);
+		var ref = created.get("reference").asString();
+		var wrongPhone = stable(post("/api/v1/reservations/cancel", Map.of("reference", ref, "phone", "30000000", "reason", "x"), null, null).andReturn());
+		var unknown = stable(post("/api/v1/reservations/cancel", Map.of("reference", "ANA-ZZZZZZ", "phone", phone, "reason", "x"), null, null).andReturn());
+		var malformed = stable(post("/api/v1/reservations/cancel", Map.of("reference", "not a reference", "phone", phone, "reason", "x"), null, null).andReturn());
+		assertThat(wrongPhone).startsWith("404 ");
+		assertThat(unknown).isEqualTo(wrongPhone);
+		assertThat(malformed).isEqualTo(wrongPhone);
+		assertThat(lookup(ref, phone).get("status").asString()).as("nothing was cancelled by the failed attempts").isEqualTo("PENDING_REVIEW");
+		assertThat(inventory.get(mattress.id(), null).reserved()).isGreaterThanOrEqualTo(1);
+	}
+
+	@Test
+	void aReasonIsRequiredAndBounded_andTheStoreOnceItIsPreparingTheOrderTakesOver() throws Exception {
+		var mattress = stockedMattress(10);
+		var phone = freshPhone();
+		var created = reserve(request(phone, line(mattress, 1, "HTG")), null);
+		var ref = created.get("reference").asString();
+		post("/api/v1/reservations/cancel", Map.of("reference", ref, "phone", phone), null, null).andExpect(status().isUnprocessableContent());          // no reason
+		post("/api/v1/reservations/cancel", Map.of("reference", ref, "phone", phone, "reason", "   "), null, null).andExpect(status().isUnprocessableContent());
+		post("/api/v1/reservations/cancel", Map.of("reference", ref, "phone", phone, "reason", "x".repeat(301)), null, null).andExpect(status().isUnprocessableContent());
+		assertThat(lookup(ref, phone).get("status").asString()).isEqualTo("PENDING_REVIEW");
+
+		asStaff("accept", created.get("id").asString());
+		assertThat(lookup(ref, phone).get("canCancel").asBoolean()).as("confirmed: still allowed").isTrue();
+		asStaff("ready", created.get("id").asString());
+		assertThat(lookup(ref, phone).get("canCancel").asBoolean()).as("ready: the customer contacts the store").isFalse();
+		post("/api/v1/reservations/cancel", Map.of("reference", ref, "phone", phone, "reason", "Je change d'avis"), null, null).andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("cancellation_not_allowed"));
+		assertThat(lookup(ref, phone).get("status").asString()).as("ready stays ready").isEqualTo("READY_FOR_PICKUP");
+	}
+
+	@Test
+	void theAuditTrailKeepsOnlyTheLengthOfTheCustomersReason() throws Exception {
+		var mattress = stockedMattress(10);
+		var phone = freshPhone();
+		var created = reserve(request(phone, line(mattress, 1, "HTG")), null);
+		cancel(created.get("reference").asString(), phone, "Mon motif très personnel", 200);
+		var events = auditEvents.findByTargetTypeAndTargetIdOrderByOccurredAtAsc("reservation", created.get("id").asString());
+		assertThat(events).extracting(e -> e.getAction()).contains("RESERVATION_CANCELLED_BY_CUSTOMER");
+		var everything = events.stream().map(e -> e.getAction() + "|" + e.getReason() + "|" + e.getNewValues()).reduce("", String::concat);
+		assertThat(everything).contains("customer reason (24 characters)").doesNotContain("très personnel");
 	}
 }

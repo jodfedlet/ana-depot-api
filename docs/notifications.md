@@ -20,7 +20,7 @@ NotificationDispatcher (scheduled, any number of workers)             ▼
 * **Email is never sent inside a business transaction**, and a failure to send never affects one (tested: SMTP down while a reservation is collected and paid).
 * **Atomicity:** the row commits or rolls back with the operation, so a message cannot be lost nor announce something that did not happen. The row holds *references* (reservation, payment, attempt) and a masked recipient hint, never the body and never the address; the address is read at send time from the reservation's contact snapshot.
 * **Layering:** `core.notification` is plain Java (model, ports `NotificationRepository`, `NotificationRecorder`, `NotificationAdminService`, `serviceImpl`). `infra.notification` holds JPA, JavaMailSender, Thymeleaf, the dispatcher and the controller. `core` imports no mail or template library (`ArchitectureTest`).
-* **Truth at send time:** content is built when the message is sent, from the current records, and a message about a state the reservation has left is **not sent** (`state_changed`, status DEAD, visible): "ready for pickup" is never mailed after the reservation was collected. A message older than `ana.mail.dispatcher.max-age` (72 h) is not sent either (`stale`): for example one that waited while mail was disabled.
+* **Truth at send time:** content is built when the message is sent, from the current records, and a message about a state the reservation has left is **not sent** (`state_changed`, status DEAD, visible): "ready for pickup" is never mailed after the reservation was collected. A message older than its limit is not sent either (see "Outcomes that are not failures"): for example one that waited while mail was disabled.
 
 ## 2. Event catalog
 Each event is emitted from exactly one backend operation, inside its transaction. Dedupe key = one message per business fact.
@@ -44,6 +44,12 @@ Each event is emitted from exactly one backend operation, inside its transaction
 * *Welcome / verification / password reset*: **Supabase Auth owns these.** The catalog has no authentication type and no such template (tested: `NotificationCoreTest.theCatalogHasNoAuthenticationMessages`, `EmailRenderingTest.everyTemplateAndMessageKeyExistsInBothLanguages`, and the browser check that creating a Supabase account produces no message from this application's SMTP sender). An application welcome e-mail is not implemented, so nothing can imply an unverified account is verified.
 
 **Payment integrity:** a receipt exists only for a payment recorded in the ledger, which for cards happens only from a signature-verified webhook. Returning from Stripe's success URL, an unsigned or tampered webhook, an amount or currency mismatch, a duplicate delivery, the same payment under another event id, and a failure/expiry arriving after success all produce **no extra or false receipt** (`OnlinePaymentIntegrationTest.noReceiptExistsUntil…`, `aMismatched…QueuesNoReceipt`, `aFailedOrExpiredCheckout…`).
+
+## 2b. Outcomes that are not failures, and important messages (review of 2026-11-19)
+* **SUPERSEDED** - the message would no longer be true (for example "ready for pickup" after the reservation was collected): deliberately not sent. It is informational, not counted as a failure, not resendable (it would not be true).
+* **EXPIRED** - the message waited longer than its limit and was not sent. Informational messages: `ANA_MAIL_MAX_AGE` (72 h). **Important** messages (`NotificationType.important()`: confirmed, rejected, ready, cancelled, expired, expiring reminder, payment received): `ANA_MAIL_IMPORTANT_MAX_AGE` (14 days, a proposal awaiting your confirmation). An expired important message means the customer may not have been told: it is counted in `attention` (dashboard warning, gauge `anadepot.notifications.attention`) and staff can resend it from the Messages screen; resending restarts the message's age (`revived_at`) and the content is still checked against the reservation's current state before it goes out.
+* **Throttle** (`ANA_MAIL_PER_RECIPIENT_PER_HOUR`) now holds back only what a PUBLIC action can cause (reservation submitted, checkout failed/expired). A decision by the store or a verified provider event is never dropped by it.
+* New messages: `RESERVATION_EXPIRING` (reminder `ANA_RESERVATION_REMINDER_LEAD` before the pickup deadline, D6) and `RESERVATION_CANCELLED_BY_CUSTOMER` (confirmation of the customer's own cancellation, D7). Twelve message types x fr + ht.
 
 ## 3. Template catalog
 Ten events x two languages. HTML and plain text are rendered from the same view in `templates/email/`:
@@ -88,7 +94,8 @@ All values come from the environment (or a secret manager); nothing real is comm
 | `ANA_MAIL_PER_RECIPIENT_PER_HOUR` | `10` | one address can only be written to so often |
 | `ANA_MAIL_MAX_ATTEMPTS` | `8` | then DEAD |
 | `ANA_MAIL_INITIAL_BACKOFF`, `ANA_MAIL_POLL_INTERVAL` | `PT1M`, `PT5S` | retry delay (doubles, jittered, capped at 6 h) and polling |
-| `ANA_MAIL_MAX_AGE` | `72h` | a message older than this is not sent any more |
+| `ANA_MAIL_MAX_AGE` | `72h` | an informational message older than this is not sent (status EXPIRED) |
+| `ANA_MAIL_IMPORTANT_MAX_AGE` | `14d` | the same for an important message; an expired one raises a staff warning |
 | `ANA_MAIL_DISPATCHER_ENABLED` | `true` | switch the sender off on an instance |
 | `ANA_MAIL_CAPTURE_DIR` | `target/mail-capture` | where `log` mode writes `.eml` files |
 
@@ -122,7 +129,7 @@ Web: **Administration > Messages clients** (summary tiles, filters, plain-langua
 1. Dashboard warning or the Messages screen shows failures. Read the plain-language reason.
 2. `smtp_auth_failed` / `smtp_unavailable` / `smtp_timeout` on many messages = provider or configuration: fix credentials, host or firewall; queued messages retry by themselves within the attempt budget; DEAD ones are resent from the screen after the fix.
 3. `recipient_rejected` / `recipient_invalid`: the customer's address is wrong; contact them by phone; resending will not help.
-4. `state_changed` / `stale`: informational: the message would no longer be true. Do not resend.
+4. `SUPERSEDED` (`state_changed`): informational: the message would no longer be true. Do not resend. `EXPIRED` (`stale`) on an important message: the customer may not know: resend it (the screen checks it is still true) or phone them.
 5. `SKIPPED_NO_RECIPIENT`: the guest gave no address: use the phone number.
 6. Alerts: `anadepot.notifications.dead > 0`, and `anadepot.notifications.oldest.waiting.age` growing (the sender is stuck or mail is disabled).
 

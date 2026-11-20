@@ -118,7 +118,7 @@ No refund exists: there is no approved refund policy, so there is no refund endp
 |---|---|---|
 | Partial payment, online | Not possible: a Checkout Session always asks for the **full current due of one currency**. | D2 |
 | Partial payment, cash | Allowed: staff record any positive amount in a currency of the reservation. | D2 |
-| Overpayment, cash | Accepted: due floors at 0, the recorded amount is kept; nothing says what happens to the extra. Online: impossible (amount fixed by the backend). | D3 |
+| Overpayment, cash | **Refused** (`422 overpayment_not_allowed`): a payment never exceeds the remaining balance of its currency; the counter gives change (approved D3). Online: impossible (amount fixed by the backend). | D3 (decided) |
 | Payment before READY_FOR_PICKUP | Online checkout is refused (`invalid_status`) until the reservation is READY_FOR_PICKUP; staff cash recording has the same limit. | D4 |
 | After rejection or cancellation | No new checkout (not READY). If a session was already open and the customer pays anyway, the verified money is **always posted** to the ledger and the attempt is flagged `requires_attention` (never lost, never auto-refunded). | D1 |
 | Refund | None. A Stripe payment cannot be reversed in the application (`409 online_payment_reversal_unsupported`); the owner refunds in the Stripe dashboard. | D1 |
@@ -150,3 +150,9 @@ Label for every row below: **MOCKED/FAKE** (mocked gateway or local fake Stripe,
 | Customer messages follow only authoritative events | `NotificationFlowIntegrationTest`, `OnlinePaymentIntegrationTest.noReceiptExistsUntil…` (docs/notifications.md) |
 
 **Not verified and cannot be locally:** the real Stripe API, hosted Checkout, HTG presentment and settlement, fees, real webhook delivery and retries from Stripe, the Ana Dépôt merchant account (D5).
+
+## Refunds (D1, approved: done in the Stripe dashboard) - what the application does
+* The application never calls the refund API and has no refund button. On a rejected, cancelled or expired reservation the staff view shows **refund due** (card money received, per currency, minus what Stripe reported as refunded).
+* Stripe sends `charge.refunded` to the webhook when the owner refunds in the dashboard. The verified event is OBSERVED: the cumulative refunded amount is stored on the attempt (`refunded_amount`, V20; it only grows and is capped at the charge), audited as `PAYMENT_REFUND_OBSERVED`, and the "refund due" figure shrinks or clears. A refund for an attempt that never succeeded, or in another currency, is flagged `requires_attention` instead of trusted. Duplicates and older notifications change nothing.
+* The payment ledger is NOT changed by a refund: it records money the store received. Netting refunds in reports and the ledger is part of the later in-application refund decision (D1). Disputes (`charge.dispute.*`) are not handled yet.
+* Verified by `OnlinePaymentIntegrationTest` (refund flag; partial, repeated, older, over-large, wrong-currency and unknown-payment refund events; ledger untouched) against a LOCAL signed-event simulation - not against Stripe.

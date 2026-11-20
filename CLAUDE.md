@@ -35,7 +35,7 @@ SPRING_PROFILES_ACTIVE=local mvn spring-boot:run   # needs SPRING_DATASOURCE_PAS
 - Retriable writes need an idempotency key (payments, reversals, adjustments, stock adjustments: REQUIRED).
 - Events go through the outbox in the SAME transaction (`DomainEventRecorder`, MANDATORY propagation), delivered at least once.
 - Insert-only entities extend `InsertOnlyEntity` (so Spring Data `save` uses `persist`, never a silently-overwriting `merge`).
-- Authorization = server-side `staff_members` row, never token claims. Deny by default (`SecurityConfig`).
+- Authorization = server-side `staff_members` row (role OWNER/MANAGER/STAFF), never token claims. Deny by default (`SecurityConfig`); every `/api/v1/admin` endpoint needs a permission listed in `AdminAccessRules` (unlisted = owner only; `AdminAccessMatrixIntegrationTest` walks every endpoint x role). A cash payment never exceeds the remaining balance of its currency (`overpayment_not_allowed`).
 
 ## Phase 3 rules worth knowing
 - Customer endpoints return `CustomerReservationView` only (no internal notes, staff ids, ledger); lookup answers an IDENTICAL 404 for unknown reference / wrong phone. Guests are never merged into accounts (V9).
@@ -54,7 +54,12 @@ SPRING_PROFILES_ACTIVE=local mvn spring-boot:run   # needs SPRING_DATASOURCE_PAS
 Integration tests extend `AbstractIntegrationTest` (one shared PostgreSQL container); staff HTTP tests are in `infra/admin` (`ApiTestSupport`, `newStaffToken()`), check money/counts as DELTAS around the data the test creates. Create uniquely named data; do not assert global
 counts. JWT tests use locally generated keys — they are NOT Supabase integration tests (say so when reporting).
 
+## Phase rules worth knowing (MVP closure)
+- Staff MFA: `ANA_STAFF_REQUIRE_MFA` defaults to true in `prod`; recovery codes are member-bound SHA-256 hashes, single use, audited; a redeemed code opens THAT session (`session_id`) for `ANA_STAFF_RECOVERY_SESSION_TTL`.
+- Reservations: `markReady` stamps the pickup deadline from `HoldPolicy`; `ReservationExpiryScheduler` reminds and expires; `POST /reservations/cancel` is the customer's own cancellation (pending/confirmed only). A refund done in the Stripe dashboard is only OBSERVED (`charge.refunded`); the ledger is never netted.
+- Notifications: SUPERSEDED / EXPIRED are not failures; important types keep a longer limit and bypass the per-address throttle.
+- Test hygiene: a stale ECJ class in `target/` (IDE) shows up as "Unresolved compilation problem": delete the package under `target/classes` and `target/test-classes`.
+
 ## Open business decisions — never invent defaults
-Wholesale visibility; business-wide minimum order; final selling units; pack/box conversion; reservation hold period (`expires_at` stays null);
-pickup details (the snapshot is opaque JSON); notification channel; who may record payments and partial-payment policy; customer cancellation
-after ready; staff roles/permissions (membership is all-or-nothing); legal pages; low-stock policy; overpayment behavior.
+Wholesale visibility; business-wide minimum order; final selling units; pack/box conversion; 
+pickup details (the snapshot is opaque JSON); notification channel; legal pages; low-stock policy. (Decided and implemented: refunds are done in the Stripe dashboard with a refund-due flag; cash overpayment refused; partial payment cash-only; online payment after ready; ready reservations held 3 days with a 24 h reminder; customer cancellation until confirmed; roles Owner/Manager/Staff; staff MFA required in production with recovery codes. See `docs/decisions.md`.)

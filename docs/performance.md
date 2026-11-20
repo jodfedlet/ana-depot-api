@@ -67,3 +67,24 @@ The slowest p95 is 64 ms (Haitian Creole products page, which renders a 12-produ
 * Hosted latency: TLS handshake, Cloudflare edge, the distance between the API runtime and the Supabase region, cold starts (a JVM needs 18 to 100 s depending on CPU, see `docs/staging/cloudflare-staging-plan.md`), mobile networks.
 * Pages rendered for an authenticated customer or staff member on a hosted deployment.
 Re-run `node scripts/measure-latency.mjs` against staging once it exists (the guard allows a dedicated remote test box with `E2E_ALLOW_NON_LOOPBACK=1`, never a hosted-looking name).
+
+## Concurrency (MVP closure phase, 2026-11-19) - `ana-depot-web/scripts/measure-concurrency.mjs`
+LOCAL measurement only (12-CPU developer machine that was also running Supabase, Postgres, MinIO, Mailpit and other work: load average about 9; relaxed rate limits so one machine can generate the load). It says nothing about a hosted deployment, TLS, a mobile network or a cold start.
+
+**A. Read load** (a mix of 6 API routes and 3 server-rendered pages, 10 s per level):
+| Users | req/s | p50 | p95 | p99 | errors | 5xx |
+|---|---|---|---|---|---|---|
+| 10 | 67 | 62 ms | 714 ms | 960 ms | 0 | 0 |
+| 25 | 86 | 85 ms | **1,371 ms** | 2,476 ms | 0 | 0 |
+| 50 | 70 | 78 ms | 3,871 ms | 4,446 ms | 0 | 0 |
+
+Per route at 25 users: **every API route p95 <= 183 ms** (payment options 85, pickup 92, search 147, categories 123, product 183, listing 164). The server-rendered pages are the problem: home p95 1,192 ms, product page 757 ms, `/ht/products` 2,506 ms. During the load the Next.js process used about 145% CPU and the API about 16%: **one Next.js process saturates at about 22-25 requests per second on its heaviest page**, so the 1-second target is NOT met for the server-rendered pages at 25 or more simultaneous visitors on this machine. The API and the database are not the bottleneck.
+Done: a public page used to carry the whole administration dictionary twice (230 KB of HTML); now 178 KB and no staff wording (test `storefront-messages.test.ts`). It did not change the saturation point.
+**Needed before launch (not done, outside this phase):** run more than one web instance behind the proxy, cache the public catalog pages (revalidated server rendering or a CDN), and re-measure on dedicated hardware and on the real hosting. The staging plan (`staging/cloudflare-staging-plan.md`) is where that gets decided.
+
+**B. Contention invariants - all hold:**
+* No overselling: 65 simultaneous reservations for 40 units -> exactly 40 reserved, 25 refused, reserved stock +40, on-hand unchanged (earlier runs: 125 for 100, 105 for 80).
+* One `Idempotency-Key` sent by 12 clients at once -> exactly one reservation.
+* 20 reservations moved through accept, ready, cash payment (full balance) and collect at the same time: every step succeeded for all 20 (p95 294 / 346 / 689 / 726 ms), every ledger reconciled, every reservation ended COLLECTED.
+* Eight simultaneous payments of a quarter of the balance: exactly four recorded, paid = total (D3).
+* No server error (5xx) anywhere.

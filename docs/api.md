@@ -157,7 +157,7 @@ variants (`variant_required`, `variant_unavailable`), pickup available, stock re
   "totals":   [ { "currency": "HTG", "amount": "50000.00" }, { "currency": "USD", "amount": "180.00" } ],
   "balances": [ { "currency": "HTG", "total": "50000.00", "paid": "0.00", "due": "50000.00" }, { "currency": "USD", "total": "180.00", "paid": "0.00", "due": "180.00" } ],
   "pickup": { "location": { "storeName": "…" }, "instructions": { }, "capturedAt": "2026-11-16T18:30:00Z", "origin": "default" },
-  "canCancel": false,
+  "canCancel": true,
   "events": [ { "type": "SUBMITTED", "at": "2026-11-16T18:30:00Z", "note": null, "rejectReason": null, "cancelledBy": null } ] }
 ```
 * `lines` are **snapshots**: name, SKU, variant label, unit, unit price, price kind and wholesale tier as they were; later catalog changes never alter them. `pricingKind`: `RETAIL | SALE | WHOLESALE` (`tierMinQuantity` set exactly for `WHOLESALE`).
@@ -166,7 +166,7 @@ variants (`variant_required`, `variant_unavailable`), pickup available, stock re
 * `status`: `PENDING_REVIEW, CONFIRMED, REJECTED, READY_FOR_PICKUP, COLLECTED, CANCELLED, EXPIRED`. `expiresAt` stays `null`: no hold period is decided.
 * `events`: `type` in `SUBMITTED, ACCEPTED, REJECTED (rejectReason: PRODUCT_UNAVAILABLE|INCORRECT_PRODUCT_INFO|QUANTITY_UNAVAILABLE|CANNOT_FULFILL|OTHER), READY_FOR_PICKUP, COLLECTED, CANCELLED (cancelledBy: CUSTOMER|STORE), EXPIRED, NOTE`
   (a note the store marked customer-visible; `note` carries the text). **Never present:** internal notes, staff identities or user ids, ledger entries, payment references, staff-written rejection or cancellation text, customer ids.
-* `canCancel` is always `false` and there is **no customer cancel endpoint**: the cancellation policy is an open business decision.
+* `canCancel` is true while the reservation is pending review or confirmed (D7): the customer may cancel it online (`POST /reservations/cancel`).
 * A signed-in customer's token links the reservation to **their own** customer record (it appears in `GET /me/reservations`); a guest's links to a guest record per phone number. Guests are **not** merged into accounts, even with the same phone number or e-mail.
 * Idempotent retry: 201 with the same `id` and `reference`.
 
@@ -180,11 +180,14 @@ The answer (and `GET /me/reservations/{id}`) includes `payments[{ currency, amou
   Missing/blank/too long (over 40 characters) fields are a 422 `validation_failed` (that reveals nothing). The phone travels in a POST body, never in a URL.
 * Throttled twice: per client (`reservation.lookup`) and per reference whatever the client (`reservation.lookup.reference`, existing or not), so guessing one reference's phone from many addresses is stopped; 429 `rate_limited` + `Retry-After`.
 
+### `POST /reservations/cancel` (public, D7 approved)
+`{ "reference", "phone", "reason" }` -> **200** `CustomerReservationView` (status `CANCELLED`). Same ownership proof, throttles and identical `404 reservation_not_found` as `/lookup`. `reason` is required (max 300). Allowed only while the reservation is `PENDING_REVIEW` or `CONFIRMED` (`409 cancellation_not_allowed` otherwise); `canCancel` in the view says whether it is still allowed. Frees the reserved stock at once, records the cancellation as the CUSTOMER's (staff history shows who and why), queues the customer's confirmation e-mail, and repeating it on a cancelled reservation changes nothing. The audit entry keeps only the length of the reason.
+
 ## Customer account (any valid token; always the token's own user)
 
-### `GET /me` -> `{ "userId", "email", "emailVerified", "staff", "mfaRequired", "permissions": [], "customerProfileId" }`
+### `GET /me` -> `{ "userId", "email", "emailVerified", "staff", "mfaRequired", "mfaRecovered", "role", "permissions": [], "customerProfileId" }`
 `mfaRequired` is true only for an ACTIVE team member whose session has not completed a second factor while `ana.staff.require-mfa` is on; such a session has `staff:false` and every `/admin/**` call answers `403 mfa_required` (never both flags true).
-`customerProfileId` is the user's own customer record id or `null`. `permissions` is empty by design (roles are undecided); `staff` comes from the staff table, never from token claims; `emailVerified` is informational.
+`customerProfileId` is the user's own customer record id or `null`. `role` (`OWNER|MANAGER|STAFF`) and `permissions` (see "Roles" below) come from the staff table through the authorities the backend derived, never from token claims; they are empty for a non-member; `mfaRecovered` is true while this session is in through a recovery code (docs/auth.md); `staff` comes from the staff table; `emailVerified` is informational.
 
 ### `GET /me/profile`, `PUT /me/profile`
 ```json
@@ -320,13 +323,41 @@ Query: `from`, `to` (`yyyy-MM-dd`, both inclusive; default: the last 30 days), `
 * `GET /admin/notifications/summary` -> `{ counts{status:n}, mode SMTP|LOG|DISABLED, oldestWaitingAt }`. `LOG` = development (nothing is sent), `DISABLED` = messages wait.
 * `POST /admin/notifications/{id}/retry` -> the message back in the queue (`PENDING`, attempts 0). Only a DEAD message: otherwise `409 notification_not_retryable`; unknown id 404. Audited `NOTIFICATION_RETRY_REQUESTED`. The response never contains the address, the body or any mail-server detail.
 
-### Team `/admin/staff` (membership is all-or-nothing: roles are an open decision, D14 in docs/decisions.md)
-* `GET /admin/staff` -> `[{ userId, active, you, initial, displayName?, email?, note, joinedAt, updatedAt? }]`. `displayName`/`email` come from the person's customer profile when they have one; otherwise `note` (what the inviter wrote) identifies them. `initial`: provisioned from configuration, not invited.
-* `PUT /admin/staff/{userId}` `{ active }` -> deactivate / reactivate; effective on the member's very next request. Refused: your own access (`422 cannot_change_own_access`), removing the last active member (`409 last_active_staff`); unknown id 404.
-* `POST /admin/staff/invitations` `{ note (1-80 chars) }` -> **201** `{ id, note, expiresAt, code }`. The **code is returned only here** (24 characters from an unambiguous alphabet, shown as `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`); only its SHA-256 hash is stored. Lifetime `ana.staff.invitation-days` (default 7).
-* `GET /admin/staff/invitations` -> `[{ id, note, status PENDING|ACCEPTED|REVOKED|EXPIRED, createdAt, expiresAt }]` (never the code). `DELETE /admin/staff/invitations/{id}` -> 204; only a pending one (`409 invitation_not_pending`).
+### Roles and permissions (D14, approved)
+Three fixed roles. A permission is a server-side authority (`PERM_<NAME>`); `AdminAccessRules` lists the permission of every `/admin` endpoint and anything unlisted is owner-only (tested for every mapped endpoint x every role: `AdminAccessMatrixIntegrationTest`).
+| Permission | Owner | Manager | Staff | Endpoints |
+|---|---|---|---|---|
+| RESERVATIONS | yes | yes | yes | `/admin/reservations/**` (view, accept, reject, ready, collect, cancel, notes) |
+| PAYMENTS_RECORD | yes | yes | yes | record a cash payment; a reservation's `/payments`, `/ledger`, `/reconciliation`; `/admin/payment-attempts` |
+| PAYMENTS_CORRECT | yes | yes | no | `payment-adjustments`, `payments/{id}/reversal` |
+| INVENTORY_VIEW / INVENTORY_ADJUST | yes / yes | yes / yes | yes / no | `GET /admin/inventory/**` / every other inventory write |
+| CATALOG_MANAGE | yes | yes | no | products, categories, images, search index |
+| CUSTOMERS_VIEW / CUSTOMERS_EDIT | yes / yes | yes / yes | yes / no | `GET` / `PUT /admin/customers` |
+| REPORTS_VIEW | yes | yes | no | `/admin/reports/**`, the global `/admin/payments` lists |
+| NOTIFICATIONS_VIEW / NOTIFICATIONS_RESEND | yes / yes | yes / yes | yes / no | `GET` / `POST .../retry` (assumption, see D14) |
+| SETTINGS_MANAGE, TEAM_MANAGE | yes | no | no | `/admin/settings/**`, `/admin/staff/**` |
+A request without the permission is `403 forbidden`. `/admin/me/recovery-codes` needs only an active membership.
+
+### My recovery codes `/admin/me/recovery-codes` (D15, any active member)
+* `POST` -> **201** `{ codes: [10 x "XXXX-XXXX-XXXX-XXXX"], generatedAt, remaining }`. The codes exist only in this answer; the previous unused codes stop working. Audit `STAFF_RECOVERY_CODES_GENERATED` (counts only).
+* `GET` -> `{ remaining, generatedAt }`.
+* `POST /me/staff-recovery/redeem` `{ code }` (a password-only session is enough; this is its purpose) -> `{ recovered:true, expiresAt, remaining }`; the grant is tied to the token's `session_id` and ends at `expiresAt` (`ANA_STAFF_RECOVERY_SESSION_TTL`, default 4 h). Every unusable code is the same `404 recovery_code_invalid`; throttled 5 per 15 min (`staff.recovery`). Audit `STAFF_MFA_RECOVERY_USED` / `STAFF_MFA_RECOVERY_REFUSED`.
+
+### Team `/admin/staff` (three roles: see "Roles and permissions"; Owner only)
+* `GET /admin/staff` -> `[{ userId, active, role, recoveryCodesRemaining, you, initial, displayName?, email?, note, joinedAt, updatedAt? }]`. `displayName`/`email` come from the person's customer profile when they have one; otherwise `note` (what the inviter wrote) identifies them. `initial`: provisioned from configuration, not invited.
+* `PUT /admin/staff/{userId}` `{ active }` -> deactivate / reactivate; effective on the member's very next request. Refused: your own access (`422 cannot_change_own_access`), removing or demoting the last active OWNER (`409 last_active_owner`); unknown id 404.
+* `PUT /admin/staff/{userId}/role` `{ role }` -> the member; audited `STAFF_ROLE_CHANGED`; not your own role (`422 cannot_change_own_access`).
+* `POST /admin/staff/invitations` `{ note (1-80 chars), role }` -> **201** `{ id, note, role, expiresAt, code }`. The **code is returned only here** (24 characters from an unambiguous alphabet, shown as `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`); only its SHA-256 hash is stored. Lifetime `ana.staff.invitation-days` (default 7).
+* `GET /admin/staff/invitations` -> `[{ id, note, role, status PENDING|ACCEPTED|REVOKED|EXPIRED, createdAt, expiresAt }]` (never the code). `DELETE /admin/staff/invitations/{id}` -> 204; only a pending one (`409 invitation_not_pending`).
 * `POST /me/staff-invitation` `{ code }` (any signed-in account; the account is the token's subject) -> `{ joined:true }`. Case and dashes are ignored. Every unusable code (unknown, malformed, used, revoked, expired) is the same `404 invitation_invalid`; an account that is already active staff gets `409 already_staff` and the code is not consumed. Rate limit `staff.accept` (5 per 10 minutes).
 * Audit: `STAFF_INVITED`, `STAFF_INVITATION_REVOKED`, `STAFF_JOINED`, `STAFF_DEACTIVATED`, `STAFF_REACTIVATED` (no code, no note text).
+
+### Additions in the MVP closure phase (2026-11-19)
+* **Staff reservation view** (`GET /admin/reservations/{id}` and every transition's answer) gains `refundDue: [{currency, amount}]` (card money still to give back on a rejected, cancelled or expired reservation; the refund is done in the Stripe dashboard, D1) and `refundedInProvider: [{currency, amount}]` (already refunded there, as Stripe reported it; the payment ledger is untouched).
+* **Payments:** a cash payment above the remaining balance of its currency is `422 overpayment_not_allowed` (D3). Webhook: verified `charge.refunded` events are observed (cumulative amount stored on the attempt, audit `PAYMENT_REFUND_OBSERVED`); other refund events stay ignored.
+* **Pickup settings** (`GET/PUT /admin/settings/pickup`): `effectiveHoldPeriodDays` (read-only) = the store's `holdPeriodDays`, else the approved default of 3 (D6). `ready` stamps `expiresAt` = ready time + that many days unless the caller names one.
+* **Notifications:** statuses add `SUPERSEDED` (no longer true: deliberately not sent) and `EXPIRED` (waited too long); `GET /admin/notifications/summary` adds `attention` (DEAD + EXPIRED messages of an important type); `POST .../retry` accepts DEAD and EXPIRED and restarts the message's age. Types add `RESERVATION_EXPIRING` and `RESERVATION_CANCELLED_BY_CUSTOMER`.
+* **Errors:** `overpayment_not_allowed` (422), `cancellation_not_allowed` (409), `last_active_owner` (409, replaces `last_active_staff`), `recovery_code_invalid` (404), `not_a_member`.
 
 ## Concurrency
 Stock: `SELECT ... FOR UPDATE` on the inventory rows in a stable order inside the reservation transaction (ADR 0009); losers get 409 `insufficient_stock` (tested over HTTP with simultaneous requests for the last units across both currencies). Optimistic `version` columns

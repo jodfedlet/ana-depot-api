@@ -97,7 +97,9 @@ recorded-by user id, reference, note.
   Entries are append-only (**database trigger**), carry actor, timestamp and correlation id. The paid amount cached on `reservation_totals` is **derived** and reconcilable:
   `PaymentService.reconcile` compares cache vs ledger per currency (a drift is detected in tests).
 * Payments are recorded only while READY_FOR_PICKUP. **Reversal and adjustment are also limited to READY_FOR_PICKUP** (conservative; policy undecided).
-* **Overpayment** is accepted (the due amount floors at 0 and the original amount is preserved) — the storefront's current behavior and an unresolved business decision; documented, not "fixed".
+* **Overpayment** is refused (D3, approved): a payment above the remaining balance of its currency is `overpayment_not_allowed`. (Older ledgers may still contain an overpayment made before the rule; the due amount floors at 0 and the amount is preserved.)
+* **Expiry (D6, approved):** a READY reservation has a pickup deadline = ready time + the store's hold days (default 3), fixed when it became ready; 24 h before it the customer is reminded; after it the system expires the reservation (stock released, customer told, payments stay on the ledger).
+* **Customer cancellation (D7, approved):** the customer may cancel while PENDING_REVIEW or CONFIRMED, with a reason; after ready the store handles it.
 * Which operations write ledger entries: payment received / reversed / adjusted. **No entry** for reservation transitions, stock movements, catalog or price changes (those are audited, not financial).
 * Double-entry accounting is **not introduced** (no chart of accounts, no tax rules). This is a payments journal; when accounting postings are added they must be balanced debit/credit entries.
 

@@ -38,6 +38,9 @@ class ProductionConfigGuard {
 		for (var warning : warnings(url, properties)) {
 			log.warn("Production configuration: {}", warning);
 		}
+		for (var warning : roleWarnings(environment.getProperty("spring.datasource.username"), environment.getProperty("spring.flyway.user"))) {
+			log.warn("Production configuration: {}", warning);
+		}
 		if (!Boolean.parseBoolean(environment.getProperty("ana.staff.require-mfa", "false"))) {
 			log.error("Production configuration: staff second-factor enforcement is OFF (ANA_STAFF_REQUIRE_MFA=false). Anyone with a staff password can use the administration. Turn it on once every member has enrolled (docs/auth.md).");
 		}
@@ -69,10 +72,10 @@ class ProductionConfigGuard {
 	static List<String> warnings(String url, AnaProperties properties) {
 		var warnings = new ArrayList<String>();
 		if (url != null && !url.contains("sslmode=") && !url.contains("ssl=true")) {
-			warnings.add("the database URL has no sslmode: add sslmode=require (Supabase accepts only TLS from outside its network)");
+			warnings.add("the database URL has no sslmode: add sslmode=require, or sslmode=verify-full with the provider's CA certificate (hosted PostgreSQL services accept only TLS from outside their network; docs/database-providers.md)");
 		}
-		if (url != null && url.contains(":6543") && !url.contains("prepareThreshold=0")) {
-			warnings.add("port 6543 looks like the transaction pooler: add prepareThreshold=0 and run Flyway on a direct or session connection (docs/supabase-database.md)");
+		if (url != null && (url.contains(":6543") || url.contains(":6432")) && !url.contains("prepareThreshold=0")) {
+			warnings.add("port 6543/6432 looks like a transaction pooler (PgBouncer, Supavisor, a managed built-in pooler): add prepareThreshold=0 and run Flyway on a direct or session connection (docs/database-providers.md)");
 		}
 		var r2 = properties.storage() == null ? null : properties.storage().r2();
 		if (r2 == null || !r2.anySet()) {
@@ -80,6 +83,18 @@ class ProductionConfigGuard {
 		}
 		if (properties.rateLimit().trustedProxies() == null || properties.rateLimit().trustedProxies().isEmpty()) {
 			warnings.add("ana.rate-limit.trusted-proxies is empty: every client is rate limited by the address of the proxy if the API runs behind one");
+		}
+		return warnings;
+	}
+
+	/**
+	 * V11 enables Row Level Security without policies, so the role that RUNS the application must own the tables (the role that ran Flyway) or have BYPASSRLS; otherwise every
+	 * table looks empty. The one configuration that can break that on any provider is a Flyway role different from the application role.
+	 */
+	static List<String> roleWarnings(String datasourceUsername, String flywayUsername) {
+		var warnings = new ArrayList<String>();
+		if (flywayUsername != null && !flywayUsername.isBlank() && !flywayUsername.equals(datasourceUsername)) {
+			warnings.add("Flyway runs as a different role than the application: the application role must OWN the tables or have BYPASSRLS, otherwise Row Level Security (V11, no policies) makes every table look empty (docs/database-providers.md)");
 		}
 		return warnings;
 	}

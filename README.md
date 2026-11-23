@@ -36,7 +36,7 @@ Flyway creates the schema on startup (`src/main/resources/db/migration`). Hibern
 ### Configuration (environment)
 | Variable | Meaning |
 |---|---|
-| `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | PostgreSQL (Supabase in production, see [docs/supabase-database.md](docs/supabase-database.md)). No defaults except profile `local`. |
+| `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | Any standard PostgreSQL 14+ (Supabase, Azure, AWS RDS, Docker): [docs/database-providers.md](docs/database-providers.md). No defaults except profile `local`. |
 | `SPRING_FLYWAY_URL`, `SPRING_FLYWAY_USER`, `SPRING_FLYWAY_PASSWORD` | optional separate (direct/session) connection for migrations; required when the application uses the transaction pooler |
 | `SUPABASE_URL` | project URL; the token issuer defaults to `<SUPABASE_URL>/auth/v1` |
 | `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1`. With `SUPABASE_URL` also empty, **every token is rejected** (fail closed). |
@@ -50,12 +50,15 @@ Flyway creates the schema on startup (`src/main/resources/db/migration`). Hibern
 ```bash
 mvn test        # 380 tests (7 skipped: 6 real-R2 opt-in + 1 search performance): unit (pure Java) + Testcontainers PostgreSQL + MinIO integration; needs Docker
 mvn package     # jar in target/
+# The same suite on another standard-PostgreSQL configuration (ADR 0016, docs/database-providers.md):
+mvn test -Dana.test.postgres.restricted-role=true       # Flyway + app as an ordinary owner role (no superuser, no BYPASSRLS), like hosted services
+mvn test -Dana.test.postgres.image=postgres:14-alpine   # another PostgreSQL major version
 ```
 Highlights: money & per-currency pricing; shared stock; mixed-currency reservations over HTTP; real concurrent submissions for the last units across HTG and USD (no overselling); idempotent replay and key reuse;
 enumeration-resistant lookup; customer-view data-leak checks; per-currency payments and ledger; outbox, deduplication, rate limiting across instances; PostgreSQL full-text search (21 + plan + opt-in 20 000-product performance test);
 presigned uploads against MinIO; Data API lockdown (RLS + revoked roles, simulated Supabase roles on plain PostgreSQL); production-configuration guard; architecture guards; staff API over HTTP for every module (401/403 matrix, validation, audit, idempotent retries, optimistic-version conflicts and simultaneous requests: exactly one winner).
 **Honest limits:** JWT tests use locally generated keys (no test talks to a real Supabase project, [docs/auth.md](docs/auth.md#testing-honesty)); storage tests use **MinIO, an S3-compatible server, not Cloudflare R2**; the real-R2 test
-(`R2_TEST_ENABLED=true mvn test -Dtest=R2RealIntegrationTest`, [docs/storage-r2.md](docs/storage-r2.md)) and the hosted-Supabase checks ([docs/supabase-database.md](docs/supabase-database.md)) are **pending**; the performance test is opt-in (`-Dsearch.perf=true`).
+(`R2_TEST_ENABLED=true mvn test -Dtest=R2RealIntegrationTest`, [docs/storage-r2.md](docs/storage-r2.md)) and the hosted-Supabase, Azure and AWS RDS checks ([docs/database-providers.md](docs/database-providers.md)) are **pending** (verified on plain PostgreSQL only); the performance test is opt-in (`-Dsearch.perf=true`).
 
 ## Documentation
 | | |
@@ -67,10 +70,11 @@ presigned uploads against MinIO; Data API lockdown (RLS + revoked roles, simulat
 | [docs/database.md](docs/database.md) | schema, migrations V1-V13, constraints (DB vs application), conventions |
 | [docs/search.md](docs/search.md) | PostgreSQL full-text search: design, Creole/French limits, measured performance |
 | [docs/auth.md](docs/auth.md) | Supabase Auth boundary, JWT validation, staff authorization, provisioning, environment |
-| [docs/supabase-database.md](docs/supabase-database.md) | Supabase PostgreSQL: connection mode, TLS, pool, role, Data API lockdown, verification |
+| [docs/database-providers.md](docs/database-providers.md) | provider-neutral PostgreSQL contract: variables, TLS, owning role, pool, poolers, per-provider notes, what is verified (ADR 0016) |
+| [docs/supabase-database.md](docs/supabase-database.md) | Supabase-hosted PostgreSQL only: poolers, Data API lockdown, verification |
 | [docs/storage-r2.md](docs/storage-r2.md) | Cloudflare R2 images: bucket, token, CORS, public domain, tests, checklist |
 | [docs/local-supabase.md](docs/local-supabase.md) | local Supabase stack for development (written by the authentication work) |
-| [docs/adr/](docs/adr/) | decisions: ledger, outbox, delivery, idempotency, retry, dedup, uploads, rate limiting, concurrency, observability, pricing, auth, Supabase Postgres/lockdown (0013), R2 (0014), full-text search (0015) |
+| [docs/adr/](docs/adr/) | decisions: ledger, outbox, delivery, idempotency, retry, dedup, uploads, rate limiting, concurrency, observability, pricing, auth, Supabase Postgres/lockdown (0013), R2 (0014), full-text search (0015), database provider independence (0016) |
 
 ## Implemented vs designed
 | Area | Implemented & tested | Designed / not exposed yet |

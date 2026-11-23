@@ -1,5 +1,5 @@
 # ADR 0013 - Supabase PostgreSQL: connection mode and Data API lockdown
-Status: accepted. Details and verification: [../supabase-database.md](../supabase-database.md).
+Status: accepted. Details and verification: [../supabase-database.md](../supabase-database.md). The provider-neutral database contract is [ADR 0016](0016-database-provider-independence.md): this ADR is the Supabase-specific part of it (RLS and the one-owning-role rule apply on every provider; the pooler and Data API parts only on Supabase).
 
 **Context.** Production data lives in a Supabase-hosted PostgreSQL. Two Supabase-specific risks matter to this backend: (1) the connection path (direct, session pooler, transaction pooler) changes which
 PostgreSQL features behave as the code assumes; (2) Supabase exposes the `public` schema through an auto-generated REST/GraphQL API and grants `anon`/`authenticated` broad default privileges there, so a

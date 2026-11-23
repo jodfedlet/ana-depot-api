@@ -6,7 +6,7 @@ Spring Boot 4 / Java 25 / Maven / PostgreSQL (Flyway + Spring Data JPA). **Modul
 Single-seller retail + wholesale store, launching in Haiti, selling in **HTG and USD**. Brand: Ana Dépôt (`ana-depot`). Sibling
 project: `../ana-depot-web` (Next.js; being connected to this API: `docs/integration-map.md`).
 
-Read `README.md` first, then `docs/api.md` (the implemented contract), `docs/architecture.md`, `docs/domain.md`, `docs/database.md`, `docs/auth.md`, `docs/search.md`, `docs/supabase-database.md`, `docs/storage-r2.md`, `docs/adr/`.
+Read `README.md` first, then `docs/api.md` (the implemented contract), `docs/architecture.md`, `docs/domain.md`, `docs/database.md`, `docs/auth.md`, `docs/search.md`, `docs/database-providers.md`, `docs/supabase-database.md`, `docs/storage-r2.md`, `docs/adr/`.
 
 ## Commands
 ```bash
@@ -26,6 +26,8 @@ SPRING_PROFILES_ACTIVE=local mvn spring-boot:run   # needs SPRING_DATASOURCE_PAS
 - Persistence is JPA only. **No JdbcTemplate/JdbcClient/raw JDBC — also not in tests.** The schema belongs to Flyway
   (`ddl-auto=validate`); never edit a released `V*__*.sql`, add the next version.
 - No JPA entity is ever returned by a controller; DTOs are separate.
+- **Database provider independence (ADR 0016, `ProviderIndependenceConventionTest`)**: standard PostgreSQL 14+, no extension, one owning role; no Supabase/Azure/AWS name, role or host in `core`, `infra` code, `application*.yaml` or migrations after V11
+  (no `create extension/role`, `grant/revoke`, `security definer` there). Switching provider = `SPRING_DATASOURCE_*` only. The suite also runs as a hosted-style role / other majors: `-Dana.test.postgres.restricted-role=true`, `-Dana.test.postgres.image=postgres:16-alpine`.
 
 ## Business invariants (do not "simplify" these away)
 - ONE product, independent prices per currency (`product_prices`), ONE stock position (`inventory_items`). No `currency` on the product.

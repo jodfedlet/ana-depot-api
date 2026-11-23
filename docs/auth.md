@@ -88,7 +88,7 @@ Never commit real values: `.env.example` has placeholders only.
 
 ## Local development
 Run the backend with `SUPABASE_URL` (or `SUPABASE_JWT_ISSUER`) of a Supabase project (a free project is enough), or of the local stack ([local-supabase.md](local-supabase.md); then `SUPABASE_JWKS_URL` may point to the stack's JWKS), or leave both empty to work only with public endpoints.
-The database connection (Supabase PostgreSQL) is documented in [supabase-database.md](supabase-database.md).
+The database connection is provider-neutral ([database-providers.md](database-providers.md)): Supabase Auth works with any standard PostgreSQL host; Supabase-hosted PostgreSQL specifics are in [supabase-database.md](supabase-database.md).
 
 ## Testing honesty
 * `SecurityIntegrationTest` exercises the **real filter chain and real validation rules** with tokens signed by a **locally generated RSA key** (`SupabaseJwtDecoders.fromPublicKey`).

@@ -25,12 +25,28 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /**
  * Real PostgreSQL (Testcontainers) with the production Flyway migrations. ONE container is shared by every test class
  * in the run (it is never stopped between contexts); tests create their own uniquely-named data.
+ *
+ * <p>The database is PLAIN PostgreSQL: no Supabase (or Azure/AWS) roles, schemas or extensions. Two switches re-run the very same suite under another
+ * standard-PostgreSQL configuration, without any change to the application (docs/database-providers.md, ADR 0016):
+ * <ul>
+ *   <li>{@code -Dana.test.postgres.image=postgres:16-alpine}: another PostgreSQL major version (default {@value #DEFAULT_IMAGE});</li>
+ *   <li>{@code -Dana.test.postgres.restricted-role=true}: Flyway and the application connect as an ordinary role that owns its database and is neither
+ *       superuser nor {@code BYPASSRLS} (the role model of hosted services), instead of the container's superuser.</li>
+ * </ul>
  */
 @SpringBootTest
 @ActiveProfiles("test")
 public abstract class AbstractIntegrationTest {
 
-	static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine").withCommand("postgres", "-c", "max_connections=400");
+	static final String DEFAULT_IMAGE = "postgres:17-alpine";
+	static final String IMAGE = System.getProperty("ana.test.postgres.image", DEFAULT_IMAGE);
+	static final boolean RESTRICTED_ROLE = Boolean.getBoolean("ana.test.postgres.restricted-role");
+	private static final String APP_ROLE = "ana_app";
+	private static final String APP_ROLE_PASSWORD = "ana_app_test_only";
+	private static final String APP_DATABASE = "ana_compat";
+
+	static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(IMAGE).withCommand("postgres", "-c", "max_connections=400")
+			.withInitScript(RESTRICTED_ROLE ? "provider-compat/restricted-role.sql" : "provider-compat/probe-role.sql");
 
 	static {
 		POSTGRES.start();
@@ -38,9 +54,11 @@ public abstract class AbstractIntegrationTest {
 
 	@DynamicPropertySource
 	static void database(DynamicPropertyRegistry registry) {
-		registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-		registry.add("spring.datasource.username", POSTGRES::getUsername);
-		registry.add("spring.datasource.password", POSTGRES::getPassword);
+		registry.add("spring.datasource.url", () -> RESTRICTED_ROLE
+				? "jdbc:postgresql://" + POSTGRES.getHost() + ":" + POSTGRES.getMappedPort(PostgreSQLContainer.POSTGRESQL_PORT) + "/" + APP_DATABASE
+				: POSTGRES.getJdbcUrl());
+		registry.add("spring.datasource.username", () -> RESTRICTED_ROLE ? APP_ROLE : POSTGRES.getUsername());
+		registry.add("spring.datasource.password", () -> RESTRICTED_ROLE ? APP_ROLE_PASSWORD : POSTGRES.getPassword());
 	}
 
 	protected static final String PICKUP = "{\"label\":\"pickup snapshot used in tests\"}";

@@ -1,5 +1,8 @@
 # Supabase PostgreSQL: connection, safety and verification
 
+> **Provider-specific document.** The application itself is provider-independent (standard PostgreSQL, [ADR 0016](adr/0016-database-provider-independence.md)); the provider-neutral setup (variables, TLS, role, pool) is in
+> [database-providers.md](database-providers.md). This page keeps only what is specific to **Supabase-hosted PostgreSQL**: its poolers, its Data API and the role revokes of V11.
+
 The backend uses Supabase **only as a managed PostgreSQL** (and Supabase Auth for identity, see [auth.md](auth.md)). It talks to the database over JDBC with its own
 role. It does **not** use Supabase's auto-generated REST/GraphQL API ("Data API"), Supabase Storage (images go to Cloudflare R2, [storage-r2.md](storage-r2.md)),
 Realtime or Edge Functions.

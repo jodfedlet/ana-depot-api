@@ -3,6 +3,13 @@
 PostgreSQL + Flyway (`src/main/resources/db/migration`) + Hibernate `ddl-auto=validate` (entities must match the schema; production never auto-generates DDL).
 Test databases are disposable Testcontainers instances running the same migrations.
 
+## Provider independence (architectural guarantee)
+The database is **standard PostgreSQL 14+ with no extension**, whoever hosts it: Supabase, Azure Database for PostgreSQL, AWS RDS for PostgreSQL or plain PostgreSQL in Docker. The same jar runs on all of them; moving
+between them is a change of `SPRING_DATASOURCE_URL/USERNAME/PASSWORD` (plus optional Flyway/pool/TLS settings) and nothing else: no business code, API or migration changes. Business code never names a provider
+(`ProviderIndependenceConventionTest`). Flyway owns the schema, JPA owns all business persistence, one owning role runs both. Authentication (Supabase Auth) and object storage (Cloudflare R2) are independent of the database host.
+Contract, configuration, TLS, the role, per-provider notes and what is verified: [database-providers.md](database-providers.md); decision and migration rules: [ADR 0016](adr/0016-database-provider-independence.md);
+Supabase-only operations: [supabase-database.md](supabase-database.md).
+
 ## Migrations (ordered)
 | Version | File | Content |
 |---|---|---|

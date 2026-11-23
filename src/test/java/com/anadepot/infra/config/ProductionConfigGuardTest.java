@@ -46,4 +46,22 @@ class ProductionConfigGuardTest {
 		assertThat(ProductionConfigGuard.warnings("jdbc:postgresql://h:5432/postgres?sslmode=require", props(null, "https://x/auth/v1", List.of("10.0.0.1")))).singleElement().asString().contains("R2");
 		assertThat(ProductionConfigGuard.warnings("jdbc:postgresql://h:6543/postgres?sslmode=require&prepareThreshold=0", props(null, "https://x/auth/v1", List.of("10.0.0.1")))).singleElement().asString().contains("R2");
 	}
+	@Test
+	void warningsNameNoHostingProviderAndRecogniseEveryCommonPoolerPort() {
+		var noTls = ProductionConfigGuard.warnings("jdbc:postgresql://h:5432/db", props(null, "https://x/auth/v1", List.of("10.0.0.1")));
+		assertThat(noTls).anySatisfy(w -> assertThat(w).contains("sslmode", "verify-full").doesNotContainIgnoringCase("supabase"));
+		for (var port : List.of("6543", "6432")) {
+			var pooled = ProductionConfigGuard.warnings("jdbc:postgresql://h:" + port + "/db?sslmode=require", props(null, "https://x/auth/v1", List.of("10.0.0.1")));
+			assertThat(pooled).anySatisfy(w -> assertThat(w).contains("prepareThreshold=0", "docs/database-providers.md").doesNotContainIgnoringCase("supabase"));
+		}
+	}
+
+	@Test
+	void aFlywayRoleThatDiffersFromTheApplicationRoleIsWarnedAboutBecauseOfRowLevelSecurity() {
+		assertThat(ProductionConfigGuard.roleWarnings("ana_app", null)).isEmpty();
+		assertThat(ProductionConfigGuard.roleWarnings("ana_app", "")).isEmpty();
+		assertThat(ProductionConfigGuard.roleWarnings("ana_app", "ana_app")).isEmpty();
+		assertThat(ProductionConfigGuard.roleWarnings("ana_app", "ana_migrator")).singleElement().asString()
+				.contains("OWN the tables", "BYPASSRLS").doesNotContain("ana_app", "ana_migrator");   // names a rule, never a credential or role name
+	}
 }

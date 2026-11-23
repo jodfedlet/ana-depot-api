@@ -1,13 +1,15 @@
-# Production (Supabase PostgreSQL). Activate with SPRING_PROFILES_ACTIVE=prod.
+# Production, on ANY standard PostgreSQL (Supabase, Azure Database for PostgreSQL, AWS RDS, self-hosted): this profile holds operational settings only, never
+# business behaviour, and has no provider-specific values. Activate with SPRING_PROFILES_ACTIVE=prod.
 # Required environment (the application REFUSES TO START without them, see ProductionConfigGuard):
 #   SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD,
-#   SUPABASE_URL or SUPABASE_JWT_ISSUER (token verification), and a trusted-proxy list when behind a proxy.
-# Choosing the connection string (direct / session pooler / transaction pooler) and the Flyway connection: docs/supabase-database.md.
+#   SUPABASE_URL or SUPABASE_JWT_ISSUER (token verification: authentication is independent of where the database runs), and a trusted-proxy list when behind a proxy.
+# Connection string, TLS, role and Flyway connection per provider: docs/database-providers.md (Supabase specifics: docs/supabase-database.md).
 spring:
   datasource:
     hikari:
       # One pool per backend instance. Total server connections = instances x maximum-pool-size, and must stay well under the database's
-      # limit (Supabase small plans allow only a few dozen direct connections; the dashboard shows the exact number for your compute size).
+      # limit (small plans of every managed service allow only a few dozen connections; the provider's console shows the exact number for your size).
+      # Every value below can be overridden without a code change: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE, ..._KEEPALIVE_TIME, ..._MAX_LIFETIME.
       maximum-pool-size: 10
       minimum-idle: 2
       max-lifetime: 1500000             # 25 min: below the idle/lifetime cut-offs of poolers and load balancers, so the pool retires connections itself
@@ -18,7 +20,7 @@ spring:
     show-sql: false
   flyway:
     # Migrations run at start-up on the main connection unless SPRING_FLYWAY_URL / _USER / _PASSWORD point Flyway at a direct or
-    # session-mode connection (REQUIRED when the application itself uses the transaction pooler).
+    # session-mode connection (REQUIRED when the application itself uses a transaction pooler). Keep the same role (it must own the tables, docs/database-providers.md).
     connect-retries: 3
 ana:
   staff:

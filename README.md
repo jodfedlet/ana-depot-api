@@ -101,3 +101,4 @@ undecided); roles/permissions not modelled; unit list and pack/box conversion un
 
 ## Hosted staging
 Readiness audit, environment templates and verification tools: [docs/staging/README.md](docs/staging/README.md) (`dev/staging/check-env.mjs`, `dev/staging/probe.mjs`).
+Deploying to the dev Azure Container App from GitHub Actions (OIDC, image tagged with the commit SHA, rollback): [docs/deployment/github-actions-dev.md](docs/deployment/github-actions-dev.md).
